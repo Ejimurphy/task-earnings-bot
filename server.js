@@ -9,7 +9,7 @@ const db = new Pool({ connectionString: process.env.DATABASE_URL || '' });
 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
 const TELEGRAM_API = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}`;
-const MONETAG_ZONE = process.env.MONETAG_ZONE || '10089898';
+const MONETAG_ZONE = process.env.MONETAG_ZONE || '10136395';
 
 // Admin IDs: comma-separated in env, or defaults
 const ADMIN_IDS = (process.env.ADMIN_TELEGRAM_IDS || '5236441213,5725566044').split(',').map(s=>s.trim()).filter(Boolean).map(s=>Number(s));
