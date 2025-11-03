@@ -86,11 +86,14 @@ app.get('/ad/:taskId', (req, res) => {
 <html><head><title>Watch Ads — Earn</title></head>
 <body>
 <h3>Watch ads to earn 200 coins</h3>
-<script src='//libtl.com/sdk.js' data-zone='10089898' data-sdk='show_10089898'></script>
+<script src='//libtl.com/sdk.js' data-zone='10136395
+' data-sdk='show_10136395
+'></script>
 <script>
 const TASK_ID = '${taskId}';
 const USER_ID = '${userId}';
-show_10089898({
+show_10136395
+({
   type: 'inApp',
   inAppSettings: { frequency: 2, capping: 0.1, interval: 30, timeout: 5, everyPage: false }
 });
