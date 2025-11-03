@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: task-earnings-bot
+    env: node
+    plan: free
+    buildCommand: "npm install"
+    startCommand: "npm start"
+    envVars:
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: MONETAG_ZONE
+        value: "10089898"
+      - key: REWARD_PER_TASK
+        value: "200"
+      - key: MIN_WITHDRAWAL_COINS
+        value: "60000"
+      - key: ADMIN_TELEGRAM_ID
+        value: "5236441213"
+      - key: DATABASE_URL
+        sync: false
