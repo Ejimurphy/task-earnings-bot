@@ -1,25 +1,13 @@
-# Task Earnings Bot
+# Task Earnings Bot (Updated)
 
-Telegram bot that allows users to perform ad-watching tasks and earn coins.
-Integrated with Monetag In-App Ads SDK.
+This version includes inline buttons, admin access control (two admin IDs), Monetag postback route and a demo ad webview.
+
+## Admins
+Admins are set by the environment variable `ADMIN_TELEGRAM_IDS` (comma-separated). By default it includes `5236441213` and `5725566044`.
 
 ## Deployment
+1. Push to GitHub and connect to Render.
+2. Set environment variables in Render (see .env.example).
+3. Set Telegram webhook to: `https://<YOUR_RENDER_URL>/telegram/webhook`
+4. Set Monetag postback to: `https://<YOUR_RENDER_URL>/api/monetag/postback`
 
-1. Push to GitHub.
-2. Connect to Render as a Node.js web service.
-3. Add the following environment variables:
-   - TELEGRAM_BOT_TOKEN
-   - MONETAG_ZONE
-   - DATABASE_URL
-   - REWARD_PER_TASK
-   - MIN_WITHDRAWAL_COINS
-   - ADMIN_TELEGRAM_ID
-4. Set Monetag Postback URL to:
-   https://<YOUR_RENDER_URL>/api/monetag/postback
-
-## Run locally
-
-```bash
-npm install
-npm start
-```

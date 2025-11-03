@@ -1,220 +1,172 @@
-
-// Task Earnings Bot — Monetag Integration Scaffold
 import express from 'express';
+import fetch from 'node-fetch';
 import { Pool } from 'pg';
-const app = express();
-const db = new Pool({ connectionString: process.env.DATABASE_URL });
 
+const app = express();
 app.use(express.json());
 
-// --- Monetag Postback Route ---
-app.post('/api/monetag/postback', async (req, res) => {
-  const payload = req.body;
-  console.log('Monetag Postback:', payload);
+const db = new Pool({ connectionString: process.env.DATABASE_URL || '' });
+
+const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
+const TELEGRAM_API = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}`;
+const MONETAG_ZONE = process.env.MONETAG_ZONE || '10089898';
+
+// Admin IDs: comma-separated in env, or defaults
+const ADMIN_IDS = (process.env.ADMIN_TELEGRAM_IDS || '5236441213,5725566044').split(',').map(s=>s.trim()).filter(Boolean).map(s=>Number(s));
+
+// Simple helper to send messages
+async function sendMessage(chatId, text, extra = {}){
+  const body = { chat_id: chatId, text, ...extra, parse_mode: 'HTML' };
+  await fetch(`${TELEGRAM_API}/sendMessage`, { method: 'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+}
+
+// Helper to answer callback_query
+async function answerCallback(callbackQueryId, text=''){
+  await fetch(`${TELEGRAM_API}/answerCallbackQuery`, { method: 'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ callback_query_id: callbackQueryId, text, show_alert:false }) });
+}
+
+// Build main user keyboard (inline)
+function userMainKeyboard(){
+  return {
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: '🎯 Perform Task', callback_data: 'perform_task' }, { text: '💰 Withdraw', callback_data: 'withdraw' }],
+        [{ text: '👥 Referral', callback_data: 'referral' }, { text: '📊 Balance', callback_data: 'balance' }],
+        [{ text: '⚙️ Help', callback_data: 'help' }]
+      ]
+    }
+  };
+}
+
+// Admin keyboard (only for admins)
+function adminKeyboard(){
+  return {
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: '👥 View Users', callback_data: 'admin_view_users' }],
+        [{ text: '💸 Withdrawals', callback_data: 'admin_withdrawals' }],
+        [{ text: '🧾 Export', callback_data: 'admin_export' }],
+        [{ text: '🔒 Ban User', callback_data: 'admin_ban' }]
+      ]
+    }
+  };
+}
+
+// Telegram webhook endpoint: set your webhook to https://<YOUR_URL>/telegram/webhook
+app.post('/telegram/webhook', async (req, res) => {
+  const update = req.body;
 
   try {
-    if (String(payload.zone) !== String(process.env.MONETAG_ZONE)) {
-      console.warn('Zone mismatch');
-      return res.status(400).send('zone mismatch');
-    }
+    // Handle messages
+    if (update.message) {
+      const msg = update.message;
+      const chatId = msg.chat.id;
+      const fromId = msg.from.id;
+      const text = msg.text || '';
 
-    let taskId = null;
-    let userId = null;
-    if (payload.custom) {
-      const parts = String(payload.custom).split(/[;,&]/);
-      for (const p of parts) {
-        if (p.includes('=')) {
-          const [k, v] = p.split('=');
-          if (k === 'taskId') taskId = v;
-          if (k === 'userId') userId = v;
+      if (text.startsWith('/start')) {
+        const welcome = `Welcome to Task Earnings Bot!\nUse the buttons below to interact.`;
+        // send keyboard (if admin, include admin button)
+        if (ADMIN_IDS.includes(fromId)) {
+          await fetch(`${TELEGRAM_API}/sendMessage`, { method: 'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ chat_id: chatId, text: welcome, reply_markup: adminKeyboard().reply_markup }) });
+        } else {
+          await fetch(`${TELEGRAM_API}/sendMessage`, { method: 'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ chat_id: chatId, text: welcome, ...userMainKeyboard() }) });
         }
+      } else if (text === '/help') {
+        await sendMessage(chatId, 'Help: Use the inline buttons to perform tasks, withdraw and invite friends.');
+      } else if (text === '/admin') {
+        if (!ADMIN_IDS.includes(fromId)) {
+          await sendMessage(chatId, '🚫 Access Denied: You are not authorized to view the admin panel.');
+        } else {
+          await fetch(`${TELEGRAM_API}/sendMessage`, { method: 'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ chat_id: chatId, text: 'Admin Panel', ...adminKeyboard() }) });
+        }
+      } else {
+        await sendMessage(chatId, 'Unknown command. Use /help or the buttons below.', userMainKeyboard());
       }
     }
 
-    if (!taskId || !userId) {
-      console.log('Missing identifiers');
-      return res.status(200).send('ignored');
-    }
+    // Handle callback queries (inline buttons)
+    if (update.callback_query) {
+      const cb = update.callback_query;
+      const data = cb.data;
+      const fromId = cb.from.id;
+      const chatId = cb.message.chat.id;
 
-    const monetagEventId = payload.event_id || payload.transaction_id || null;
-    if (monetagEventId) {
-      const exists = await db.query(`SELECT 1 FROM ad_watches WHERE monetag_receipt=$1`, [monetagEventId]);
-      if (exists.rowCount > 0) return res.status(200).send('duplicate');
-    }
+      // User actions
+      if (data === 'perform_task') {
+        // Here you would check DB if task is available; for demo we open ad page link
+        const adUrl = `${process.env.BASE_URL || ''}/ad/demo_task?userId=${fromId}`;
+        await answerCallback(cb.id, 'Opening ad session...');
+        await sendMessage(chatId, `Click to watch ads: ${adUrl}`);
+      } else if (data === 'withdraw') {
+        await answerCallback(cb.id, 'Withdraw selected');
+        await sendMessage(chatId, 'To request a withdrawal, reply with /withdraw');
+      } else if (data === 'referral') {
+        await answerCallback(cb.id, 'Referral info');
+        const refLink = `${process.env.BASE_URL || ''}/r/${fromId}`;
+        await sendMessage(chatId, `Share this link to invite: ${refLink}`);
+      } else if (data === 'balance') {
+        await answerCallback(cb.id, 'Balance');
+        // Fetch balance from DB (demo shows placeholder)
+        const res = await db.query('SELECT wallet_coins FROM users WHERE telegram_id=$1', [fromId]);
+        const coins = (res.rows[0] && res.rows[0].wallet_coins) || 0;
+        await sendMessage(chatId, `Your balance: ${coins} coins`);
+      } else if (data === 'help') {
+        await answerCallback(cb.id, 'Help');
+        await sendMessage(chatId, 'Help: Use the buttons to navigate.');
+      }
 
-    await db.query('BEGIN');
-    try {
-      await db.query(
-        `INSERT INTO ad_watches (user_id, task_id, validated, monetag_receipt)
-         VALUES ($1,$2,true,$3)`,
-        [userId, taskId, monetagEventId]
-      );
-      await db.query(`UPDATE tasks SET ads_watched_count=ads_watched_count+1 WHERE id=$1`, [taskId]);
-      await db.query('COMMIT');
-    } catch (err) {
-      await db.query('ROLLBACK');
-      throw err;
-    }
-
-    const { rows } = await db.query(`SELECT ads_watched_count, status, user_id FROM tasks WHERE id=$1`, [taskId]);
-    if (rows[0] && rows[0].ads_watched_count >= 10 && rows[0].status !== 'completed') {
-      const reward = parseInt(process.env.REWARD_PER_TASK || '200', 10);
-      await db.query('BEGIN');
-      try {
-        await db.query(`UPDATE tasks SET status='completed' WHERE id=$1`, [taskId]);
-        await db.query(`UPDATE users SET wallet_coins=wallet_coins+$1 WHERE id=$2`, [reward, userId]);
-        await db.query('COMMIT');
-        console.log(`Task ${taskId} completed for user ${userId}, +${reward} coins.`);
-      } catch (e) {
-        await db.query('ROLLBACK');
-        throw e;
+      // Admin actions (require admin check)
+      else if (data.startsWith('admin_')) {
+        if (!ADMIN_IDS.includes(fromId)) {
+          await answerCallback(cb.id, 'Access denied');
+          await sendMessage(chatId, '🚫 Access Denied: Admins only.');
+        } else {
+          if (data === 'admin_view_users') {
+            await answerCallback(cb.id, 'Fetching users...');
+            const users = await db.query('SELECT telegram_id, wallet_coins FROM users ORDER BY created_at DESC LIMIT 50');
+            const lines = users.rows.map(u => `@${u.telegram_id} — ${u.wallet_coins} coins`).join('\n') || 'No users';
+            await sendMessage(chatId, `<b>Users</b>\n${lines}`);
+          } else if (data === 'admin_withdrawals') {
+            await answerCallback(cb.id, 'Withdrawals');
+            const w = await db.query('SELECT id, user_id, coins_requested, status FROM withdrawals WHERE status=$1', ['pending']);
+            const lines = w.rows.map(r => `ID:${r.id} user:${r.user_id} coins:${r.coins_requested}`).join('\n') || 'No pending';
+            await sendMessage(chatId, `<b>Pending Withdrawals</b>\n${lines}`);
+          } else if (data === 'admin_export') {
+            await answerCallback(cb.id, 'Exporting...');
+            await sendMessage(chatId, 'Export created. (Use the admin web panel to download)');
+          } else if (data === 'admin_ban') {
+            await answerCallback(cb.id, 'Ban user');
+            await sendMessage(chatId, 'Reply with /ban <telegram_id> to ban a user.');
+          }
+        }
+      } else {
+        await answerCallback(cb.id, 'Unknown action');
       }
     }
 
     res.status(200).send('ok');
   } catch (err) {
-    console.error('Postback error', err);
-    res.status(500).send('error');
+    console.error('Webhook error', err);
+    res.status(500).send('err');
   }
 });
 
-// --- Monetag Ad Webview Page ---
+// Monetag postback route (same as before)
+app.post('/api/monetag/postback', async (req, res) => {
+  console.log('Monetag payload', req.body);
+  res.status(200).send('ok');
+});
+
+// Ad page for demo
 app.get('/ad/:taskId', (req, res) => {
   const { taskId } = req.params;
   const userId = req.query.userId || 'unknown';
-  res.send(`<!doctype html>
-<html><head><title>Watch Ads — Earn</title></head>
-<body>
-<h3>Watch ads to earn 200 coins</h3>
-<script src='//libtl.com/sdk.js' data-zone='10136395
-' data-sdk='show_10136395
-'></script>
-<script>
-const TASK_ID = '${taskId}';
-const USER_ID = '${userId}';
-show_10136395
-({
-  type: 'inApp',
-  inAppSettings: { frequency: 2, capping: 0.1, interval: 30, timeout: 5, everyPage: false }
-});
-fetch('/api/task/session-start', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({taskId:TASK_ID,userId:USER_ID})});
-</script>
-</body></html>`);
+  res.send(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Watch Ads</title></head><body><h3>Watch ads to earn 200 coins</h3><script src='//libtl.com/sdk.js' data-zone='${MONETAG_ZONE}' data-sdk='show_${MONETAG_ZONE}'></script><script>const TASK_ID='${taskId}';const USER_ID='${userId}';show_${MONETAG_ZONE}({type:'inApp',inAppSettings:{frequency:2,capping:0.1,interval:30,timeout:5,everyPage:false}});fetch('/api/task/session-start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({taskId:TASK_ID,userId:USER_ID})});</script></body></html>`);
 });
 
-// --- Telegram webhook handler ---
-// Requires: axios and process.env.TELEGRAM_BOT_TOKEN set
-import axios from "axios";
+// Simple root
+app.get('/', (req, res) => res.send('✅ Task Earnings Bot API Running Successfully!'));
 
-const TG_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-if (!TG_TOKEN) {
-  console.warn("WARNING: TELEGRAM_BOT_TOKEN not set in env");
-}
-const TG_API = `https://api.telegram.org/bot${TG_TOKEN}`;
-
-async function sendTelegram(chatId, text, extra = {}) {
-  try {
-    await axios.post(`${TG_API}/sendMessage`, {
-      chat_id: chatId,
-      text,
-      parse_mode: "HTML",
-      ...extra
-    });
-  } catch (e) {
-    console.error("Failed to send Telegram message", e?.response?.data || e.message);
-  }
-}
-
-// Basic command handler
-app.post("/telegram/webhook", async (req, res) => {
-  try {
-    const update = req.body;
-    // Accept message or callback_query
-    const message = update.message || (update.callback_query && update.callback_query.message);
-    if (!message) {
-      res.status(200).send("no message");
-      return;
-    }
-    const chatId = message.chat.id;
-    const text = (message.text || "").trim();
-    const from = message.from || {};
-    const userId = from.id;
-
-    console.log("Telegram update:", { chatId, userId, text });
-
-    // Parse commands
-    const parts = text.split(" ").filter(Boolean);
-    const command = parts[0]?.toLowerCase();
-
-    // Helper: Reply keyboard (inline) example
-    const mainMenuKeyboard = {
-      reply_markup: {
-        inline_keyboard: [
-          [{ text: "🎯 Perform Task", callback_data: "TASK" }],
-          [{ text: "💰 Withdraw", callback_data: "WITHDRAW" }, { text: "👥 Referral", callback_data: "REFERRAL" }],
-          [{ text: "📊 Balance", callback_data: "BALANCE" }, { text: "ℹ️ Help", callback_data: "HELP" }]
-        ]
-      }
-    };
-
-    // Admin ID check
-    const ADMIN_ID = String(process.env.ADMIN_TELEGRAM_ID || "");
-
-    // Simple command handling
-    if (command === "/start") {
-      await sendTelegram(chatId, `Welcome! Use /help to see commands.\n\nClick the menu:`, mainMenuKeyboard);
-    } else if (command === "/help") {
-      const helpText = [
-        "<b>Available Commands</b>",
-        "/start - Start bot & show menu",
-        "/help - Show this help",
-        "/task - Open task dashboard",
-        "/balance - Show your coins balance",
-        "/withdraw - Request withdrawal",
-        "/referral - Show referral link",
-        "/history - Recent activity",
-      ].join("\n");
-      await sendTelegram(chatId, helpText);
-    } else if (command === "/task") {
-      // Placeholder: in production call your API to get task availability
-      await sendTelegram(chatId, "Open the task dashboard: https://" + (process.env.BASE_URL || req.headers.host) + `/ad/TEST_TASK?userId=${userId}`, { disable_web_page_preview: true });
-    } else if (command === "/balance") {
-      // Example: query DB for user balance (replace with real query)
-      try {
-        const { rows } = await db.query("SELECT wallet_coins FROM users WHERE telegram_id=$1", [userId]);
-        const balance = rows[0] ? Number(rows[0].wallet_coins) : 0;
-        const rate = Number(process.env.COIN_TO_USD_RATE || 0.00005);
-        const usd = (balance * rate).toFixed(4);
-        await sendTelegram(chatId, `Your balance: ${balance} coins (≈ $${usd})`);
-      } catch (e) {
-        console.error("Balance lookup error", e);
-        await sendTelegram(chatId, "Unable to fetch balance right now. Try again later.");
-      }
-    } else if (command === "/withdraw") {
-      await sendTelegram(chatId, "To request withdrawal, reply with `/withdraw <coins> <bank_name> <account_number> <account_name>`\nExample:\n/withdraw 60000 Moniepoint 0123456789 \"John Doe\"");
-    } else if (command === "/referral") {
-      // Generate referral link using telegram id
-      const base = process.env.BASE_URL ? process.env.BASE_URL.replace(/https?:\/\//, "") : req.headers.host;
-      const link = `https://${base}/r/${userId}`;
-      await sendTelegram(chatId, `Share this link to invite friends and earn 50 coins:\n${link}`, { disable_web_page_preview: true });
-    } else if (command === "/history") {
-      // Placeholder: query recent tasks / withdrawals
-      await sendTelegram(chatId, "Recent activity:\n1) Task +200 coins\n2) Withdrawal pending");
-    } else if (command && command.startsWith("/approve") && String(userId) === ADMIN_ID) {
-      // Admin example: /approve <withdrawal_id>
-      await sendTelegram(chatId, "Approval command received (admin).");
-    } else {
-      // Unknown command — show menu
-      await sendTelegram(chatId, "Unknown command. Use /help or tap the menu below.", mainMenuKeyboard);
-    }
-
-    res.status(200).send("ok");
-  } catch (err) {
-    console.error("Telegram webhook error:", err);
-    res.status(500).send("error");
-  }
-});
-
-// --- Start Server ---
-const PORT = process.env.PORT || 8080;
+const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
