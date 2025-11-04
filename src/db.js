@@ -63,3 +63,4 @@ const initTables = async () => {
 initTables();
 
 export default pool;
+
