@@ -9,12 +9,12 @@ services:
       - key: TELEGRAM_BOT_TOKEN
         sync: false
       - key: MONETAG_ZONE
-        value: "10089898"
+        value: "10136395"
       - key: REWARD_PER_TASK
         value: "200"
       - key: MIN_WITHDRAWAL_COINS
         value: "60000"
       - key: ADMIN_TELEGRAM_ID
-        value: "5236441213"
+        value: "5236441213,5725566044"
       - key: DATABASE_URL
         sync: false
