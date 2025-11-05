@@ -400,7 +400,6 @@ bot.command("broadcast", async (ctx) => {
 });
 
 // ========= EXPRESS SERVER =========
-import express from "express";
 const app = express();
 
 app.get("/", (req, res) => {
