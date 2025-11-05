@@ -476,10 +476,95 @@ bot.on("text", async (ctx) => {
     return;
   }
 
-  // HANDLE change bank account flow: expecting "oldBank,oldAccNum, newBank,newAccNum"
+  // HANDLE change bank account flow: expecting "oldBank,oldAccNum, oldName | newBank,newAccNum,newName"
   if (state.action === "await_change_bank") {
-    // format: oldBank,oldAcc,oldName;newBank,newAcc,newName (or some agreed format). We'll expect old and new separated by '|'
     if (!text.includes("|")) {
       return ctx.reply("Invalid format. Please send: oldBank,oldAccNumber,oldName|newBank,newAccNumber,newName");
     }
-    const [oldStr, newStr] = text.split("|").map(s =>
+    const [oldStr, newStr] = text.split("|").map(s => s.trim());
+    const [oldBank, oldAcc, oldName] = oldStr.split(",").map(s => s.trim());
+    const [newBank, newAcc, newName] = newStr.split(",").map(s => s.trim());
+    const userId = ctx.from.id;
+    try {
+      const user = await pool.query("SELECT bank_name, account_number, account_name FROM users WHERE telegram_id=$1", [userId]);
+      if (!user.rows.length) {
+        await ctx.reply("⚠️ No existing bank record found. Please add one first.");
+        userState.delete(userId);
+        return;
+      }
+      const u = user.rows[0];
+      if (
+        u.bank_name.toLowerCase() !== oldBank.toLowerCase() ||
+        u.account_number !== oldAcc ||
+        u.account_name.toLowerCase() !== oldName.toLowerCase()
+      ) {
+        await ctx.reply("🚫 The old bank details you entered do not match our records. Update request denied.");
+        userState.delete(userId);
+        return;
+      }
+      await pool.query("UPDATE users SET bank_name=$1, account_number=$2, account_name=$3 WHERE telegram_id=$4", [newBank, newAcc, newName, userId]);
+      await ctx.reply("✅ Bank account changed successfully!");
+    } catch (err) {
+      console.error("Error changing bank account:", err);
+      await ctx.reply("⚠️ Error processing change request. Try again later.");
+    }
+    userState.delete(userId);
+    return;
+  }
+
+  // WITHDRAW COMMAND
+  bot.command("withdraw", async (ctx) => {
+    const telegramId = ctx.from.id;
+    try {
+      const res = await pool.query("SELECT wallet, bank_name, account_number FROM users WHERE telegram_id=$1", [telegramId]);
+      if (!res.rows.length) return ctx.reply("⚠️ You are not registered yet. Type /start to register.");
+      const user = res.rows[0];
+      if (parseFloat(user.wallet) <= 0) return ctx.reply("💰 Insufficient balance. Do more tasks today to increase your wallet balance.");
+      if (!user.bank_name || !user.account_number) return ctx.reply("🏦 Please update your bank details first using /bank");
+      await ctx.reply(`💳 Withdrawal request received for ₦${user.wallet}. Admin will review and process your payout soon.`);
+    } catch (e) {
+      console.error("Withdraw error:", e);
+      await ctx.reply("⚠️ Error processing withdrawal.");
+    }
+  });
+
+  // HANDLE INVALID TEXT OR UNKNOWN COMMANDS
+  bot.on("text", async (ctx) => {
+    const text = ctx.message.text;
+    const validCommands = [
+      "/start",
+      "/help",
+      "/task",
+      "/wallet",
+      "/withdraw",
+      "/bank",
+      "/changebank",
+      "/refer",
+      "/gethelp"
+    ];
+
+    if (!validCommands.includes(text) && !text.startsWith("/")) {
+      await ctx.reply("❌ Invalid text. Please use the available bot commands only.");
+    }
+  });
+
+  // GET HELP COMMAND
+  bot.command("gethelp", async (ctx) => {
+    await ctx.reply("📞 Need assistance?\nOur support team is here to help.\nContact admin via Telegram: @FonPaySupport");
+  });
+
+  // GRACEFUL SHUTDOWN HANDLERS
+  process.on("SIGTERM", () => {
+    console.log("Server shutting down...");
+    bot.stop("SIGTERM");
+    process.exit(0);
+  });
+
+  process.on("SIGINT", () => {
+    console.log("Server interrupted...");
+    bot.stop("SIGINT");
+    process.exit(0);
+  });
+
+  app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+})();
