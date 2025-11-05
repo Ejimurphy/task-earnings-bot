@@ -1,232 +1,246 @@
-// server.js
-// Task-Earning Bot Backend (Node.js)
+// ==========================
+// Task Earnings Bot - Server
+// Updated with Monetag Zone 10136395
+// Admins: 5236441213, 5725566044
+// ==========================
 
 import express from "express";
-import bodyParser from "body-parser";
-import sqlite3 from "sqlite3";
-import { open } from "sqlite";
-import TelegramBot from "node-telegram-bot-api";
-import cron from "node-cron";
+import { Telegraf } from "telegraf";
+import pkg from "pg";
 import dotenv from "dotenv";
 
 dotenv.config();
+const { Pool } = pkg;
 
 const app = express();
-app.use(bodyParser.json());
+app.use(express.json());
 
-const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-const ADMIN_ID = process.env.ADMIN_ID || "5725566044";
-const COIN_TO_USD = 0.00005;
-const REWARD_PER_TASK = 200;
-const REFERRAL_REWARD = 50;
-const MIN_WITHDRAWAL_COINS = 60000;
+// ========== ENVIRONMENT CONFIG ==========
+const BOT_TOKEN = process.env.BOT_TOKEN;
+const DATABASE_URL = process.env.DATABASE_URL;
+const PORT = process.env.PORT || 10000;
+const MONETAG_ZONE = process.env.MONETAG_ZONE || "10136395";
+const ADMIN_IDS = (process.env.ADMIN_TELEGRAM_ID || "5236441213,5725566044")
+  .split(",")
+  .map((id) => id.trim());
 
-const bot = new TelegramBot(TELEGRAM_BOT_TOKEN, { polling: true });
+// ========== DATABASE SETUP ==========
+const pool = new Pool({
+  connectionString: DATABASE_URL,
+  ssl: { rejectUnauthorized: false },
+});
 
-let db;
-(async () => {
-  db = await open({
-    filename: "./taskbot.db",
-    driver: sqlite3.Database,
-  });
+async function initializeDatabase() {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
+        telegram_id BIGINT UNIQUE,
+        username TEXT,
+        balance NUMERIC DEFAULT 0,
+        coins BIGINT DEFAULT 0,
+        referred_by BIGINT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
 
-  await db.exec(`
-    CREATE TABLE IF NOT EXISTS users (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      telegram_id TEXT UNIQUE,
-      username TEXT,
-      wallet_coins INTEGER DEFAULT 0,
-      invited_by TEXT,
-      next_task_time TEXT,
-      is_banned INTEGER DEFAULT 0,
-      created_at TEXT DEFAULT CURRENT_TIMESTAMP
-    );
-  `);
+      CREATE TABLE IF NOT EXISTS withdrawals (
+        id SERIAL PRIMARY KEY,
+        user_id BIGINT REFERENCES users(telegram_id),
+        bank_name TEXT,
+        account_name TEXT,
+        account_number TEXT,
+        amount NUMERIC,
+        status TEXT DEFAULT 'pending',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
 
-  await db.exec(`
-    CREATE TABLE IF NOT EXISTS withdrawals (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER,
-      coins INTEGER,
-      usd REAL,
-      status TEXT DEFAULT 'pending',
-      account_name TEXT,
-      account_number TEXT,
-      bank_name TEXT,
-      created_at TEXT DEFAULT CURRENT_TIMESTAMP
-    );
-  `);
-})();
-
-function coinsToUSD(coins) {
-  return (coins * COIN_TO_USD).toFixed(2);
+      CREATE TABLE IF NOT EXISTS ad_views (
+        id SERIAL PRIMARY KEY,
+        user_id BIGINT REFERENCES users(telegram_id),
+        ad_count INT DEFAULT 0,
+        completed BOOLEAN DEFAULT FALSE,
+        last_watch TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    console.log("✅ Database initialized successfully");
+  } catch (error) {
+    console.error("❌ Database initialization failed:", error);
+  }
 }
 
-async function scheduleNextTask(userId) {
-  const now = new Date();
-  const offset = Math.floor(Math.random() * 600000) - 300000;
-  const nextTime = new Date(now.getTime() + 20 * 60000 + offset);
-  await db.run(`UPDATE users SET next_task_time = ? WHERE id = ?`, [
-    nextTime.toISOString(),
-    userId,
-  ]);
-}
+// ========== TELEGRAM BOT ==========
+const bot = new Telegraf(BOT_TOKEN);
 
-bot.onText(/\/start(?: (.+))?/, async (msg, match) => {
-  const chatId = msg.chat.id;
-  const username = msg.from.username || msg.from.first_name;
-  const refCode = match[1];
+bot.start(async (ctx) => {
+  const telegramId = ctx.from.id;
+  const username = ctx.from.username || "Unknown";
 
-  let user = await db.get(`SELECT * FROM users WHERE telegram_id = ?`, [chatId]);
-  if (!user) {
-    await db.run(
-      `INSERT INTO users (telegram_id, username, invited_by) VALUES (?, ?, ?)`,
-      [chatId, username, refCode || null]
+  try {
+    const existing = await pool.query(
+      "SELECT * FROM users WHERE telegram_id = $1",
+      [telegramId]
     );
-    user = await db.get(`SELECT * FROM users WHERE telegram_id = ?`, [chatId]);
 
-    if (refCode) {
-      const refUser = await db.get(`SELECT * FROM users WHERE telegram_id = ?`, [refCode]);
-      if (refUser) {
-        await db.run(
-          `UPDATE users SET wallet_coins = wallet_coins + ? WHERE id = ?`,
-          [REFERRAL_REWARD, refUser.id]
-        );
-        bot.sendMessage(
-          refUser.telegram_id,
-          `🎉 You earned ${REFERRAL_REWARD} coins from referring ${username}!`
-        );
-      }
+    if (existing.rows.length === 0) {
+      await pool.query(
+        "INSERT INTO users (telegram_id, username) VALUES ($1, $2)",
+        [telegramId, username]
+      );
+      await ctx.reply(
+        `🎉 Welcome, ${username}! Your account has been created successfully.\n\nUse /menu to view available options.`
+      );
+    } else {
+      await ctx.reply(`👋 Welcome back, ${username}! Use /menu to continue.`);
     }
+  } catch (err) {
+    console.error("Error on start:", err);
+    await ctx.reply("⚠️ An error occurred while creating your account.");
   }
-
-  await scheduleNextTask(user.id);
-
-  bot.sendMessage(
-    chatId,
-    `👋 Welcome ${username}!\n\nYour wallet: ${user.wallet_coins} coins ($${coinsToUSD(
-      user.wallet_coins
-    )}).\n\nUse /task to perform your next task.\nInvite others with your link:\nhttps://t.me/${
-      bot.me?.username || "YourBot"
-    }?start=${chatId}`
-  );
 });
 
-bot.onText(/\/task/, async (msg) => {
-  const chatId = msg.chat.id;
-  const user = await db.get(`SELECT * FROM users WHERE telegram_id = ?`, [chatId]);
-  if (!user) return bot.sendMessage(chatId, "Please use /start first.");
-  if (user.is_banned) return bot.sendMessage(chatId, "🚫 You are banned.");
+// ========== MAIN MENU ==========
+bot.command("menu", async (ctx) => {
+  const keyboard = [
+    [{ text: "💼 Wallet Balance" }, { text: "🎥 Perform Task" }],
+    [{ text: "💸 Withdraw" }, { text: "👥 Refer & Earn" }],
+  ];
+  await ctx.reply("📍 Choose an option below:", {
+    reply_markup: { keyboard, resize_keyboard: true },
+  });
+});
 
-  const now = new Date();
-  const next = new Date(user.next_task_time);
-  if (now < next) {
-    const diff = Math.round((next - now) / 60000);
-    return bot.sendMessage(chatId, `⏳ Please wait ${diff} minutes before your next task.`);
+// ========== HANDLE BUTTONS ==========
+bot.hears("💼 Wallet Balance", async (ctx) => {
+  const telegramId = ctx.from.id;
+  try {
+    const res = await pool.query(
+      "SELECT balance, coins FROM users WHERE telegram_id=$1",
+      [telegramId]
+    );
+    if (res.rows.length === 0) {
+      return ctx.reply("⚠️ You don’t have a wallet yet. Type /start to register.");
+    }
+    const { balance, coins } = res.rows[0];
+    const dollarValue = (coins * 0.00005).toFixed(2);
+    await ctx.reply(
+      `💰 *Wallet Summary*\n\nCoins: ${coins} 🪙\nEquivalent: $${dollarValue}\nCash: ₦${balance}\n\n#PayWithFonPayAndRelax`,
+      { parse_mode: "Markdown" }
+    );
+  } catch (error) {
+    console.error(error);
+    await ctx.reply("⚠️ Error fetching wallet details.");
   }
-
-  await db.run(
-    `UPDATE users SET wallet_coins = wallet_coins + ? WHERE id = ?`,
-    [REWARD_PER_TASK, user.id]
-  );
-  await scheduleNextTask(user.id);
-
-  const updated = await db.get(`SELECT wallet_coins FROM users WHERE id = ?`, [user.id]);
-  bot.sendMessage(
-    chatId,
-    `✅ Task completed! You earned ${REWARD_PER_TASK} coins.\n\nWallet: ${updated.wallet_coins} coins ($${coinsToUSD(
-      updated.wallet_coins
-    )}).`
-  );
 });
 
-bot.onText(/\/wallet/, async (msg) => {
-  const chatId = msg.chat.id;
-  const user = await db.get(`SELECT * FROM users WHERE telegram_id = ?`, [chatId]);
-  if (!user) return bot.sendMessage(chatId, "Please use /start first.");
-  bot.sendMessage(
-    chatId,
-    `💰 Wallet balance:\n${user.wallet_coins} coins ($${coinsToUSD(user.wallet_coins)}).`
-  );
+bot.hears("🎥 Perform Task", async (ctx) => {
+  const telegramId = ctx.from.id;
+  try {
+    await pool.query(
+      "INSERT INTO ad_views (user_id, ad_count, completed) VALUES ($1, 0, FALSE) ON CONFLICT DO NOTHING",
+      [telegramId]
+    );
+    await ctx.reply(
+      `🎬 Task Started! Watch ads to earn rewards.\n\n👉 Visit: https://www.monetag.com/?zone=${MONETAG_ZONE}\n\nAfter watching all 10 ads, return and type *Done* to claim your reward.`,
+      { parse_mode: "Markdown" }
+    );
+  } catch (err) {
+    console.error(err);
+    await ctx.reply("⚠️ Error starting your task.");
+  }
 });
 
-bot.onText(/\/withdraw (.+)/, async (msg, match) => {
-  const chatId = msg.chat.id;
-  const [account_number, bank_name, account_name] = match[1].split(",");
-  const user = await db.get(`SELECT * FROM users WHERE telegram_id = ?`, [chatId]);
-  if (!user) return bot.sendMessage(chatId, "Please use /start first.");
-  if (user.wallet_coins < MIN_WITHDRAWAL_COINS)
-    return bot.sendMessage(chatId, `🚫 Minimum withdrawal is ${MIN_WITHDRAWAL_COINS} coins.`);
+bot.hears("Done", async (ctx) => {
+  const telegramId = ctx.from.id;
+  try {
+    const adRes = await pool.query(
+      "SELECT * FROM ad_views WHERE user_id=$1",
+      [telegramId]
+    );
+    if (adRes.rows.length === 0) {
+      return ctx.reply("⚠️ You have no active task. Use /menu to start one.");
+    }
 
-  await db.run(
-    `INSERT INTO withdrawals (user_id, coins, usd, account_name, account_number, bank_name) VALUES (?, ?, ?, ?, ?, ?)`,
-    [
-      user.id,
-      user.wallet_coins,
-      coinsToUSD(user.wallet_coins),
-      account_name,
-      account_number,
-      bank_name,
-    ]
-  );
-  await db.run(`UPDATE users SET wallet_coins = 0 WHERE id = ?`, [user.id]);
-
-  bot.sendMessage(
-    chatId,
-    `✅ Withdrawal request submitted for ${coinsToUSD(
-      user.wallet_coins
-    )} USD.\nWe’ll review and process shortly.`
-  );
-
-  bot.sendMessage(
-    ADMIN_ID,
-    `💸 New withdrawal request from ${user.username}\nAmount: ${user.wallet_coins} coins ($${coinsToUSD(
-      user.wallet_coins
-    )}).\nAccount: ${account_name} - ${bank_name} (${account_number}).`
-  );
-});
-
-bot.onText(/\/users/, async (msg) => {
-  if (msg.chat.id.toString() !== ADMIN_ID) return;
-  const users = await db.all(`SELECT * FROM users`);
-  bot.sendMessage(
-    msg.chat.id,
-    `👥 Total users: ${users.length}\n\n${users
-      .map((u) => `${u.username} - ${u.wallet_coins} coins`)
-      .join("\n")}`
-  );
-});
-
-bot.onText(/\/withdrawals/, async (msg) => {
-  if (msg.chat.id.toString() !== ADMIN_ID) return;
-  const rows = await db.all(`SELECT * FROM withdrawals WHERE status='pending'`);
-  if (!rows.length) return bot.sendMessage(msg.chat.id, "No pending requests.");
-  bot.sendMessage(
-    msg.chat.id,
-    `💵 Pending withdrawals:\n\n${rows
-      .map(
-        (r) => `ID: ${r.id} | ${r.usd} USD | ${r.account_name} (${r.bank_name})`
-      )
-      .join("\n")}`
-  );
-});
-
-app.get("/", (req, res) => res.send("Task-Earning Bot Server is running!"));
-
-cron.schedule("*/5 * * * *", async () => {
-  const now = new Date();
-  const rows = await db.all(`SELECT * FROM users WHERE next_task_time IS NOT NULL`);
-  for (const user of rows) {
-    const next = new Date(user.next_task_time);
-    const diff = Math.floor((next - now) / 60000);
-    if (diff <= 5 && diff > 0) {
-      bot.sendMessage(
-        user.telegram_id,
-        `⏰ Reminder: Your next task will be available in ${diff} minutes!`
+    const adCount = adRes.rows[0].ad_count;
+    if (adCount < 10) {
+      return ctx.reply(
+        `⚠️ You’ve only watched ${adCount}/10 ads.\nPlease complete all before submitting.`
       );
     }
+
+    // Credit reward
+    await pool.query(
+      "UPDATE users SET coins = coins + 200 WHERE telegram_id = $1",
+      [telegramId]
+    );
+    await pool.query(
+      "UPDATE ad_views SET completed=TRUE WHERE user_id=$1",
+      [telegramId]
+    );
+
+    await ctx.reply("✅ Task completed! 200 coins credited to your wallet. 🪙");
+  } catch (err) {
+    console.error(err);
+    await ctx.reply("⚠️ Error processing reward.");
   }
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+bot.hears("👥 Refer & Earn", async (ctx) => {
+  const telegramId = ctx.from.id;
+  const referralLink = `https://t.me/${ctx.botInfo.username}?start=${telegramId}`;
+  await ctx.reply(
+    `👥 *Refer and Earn!*\n\nShare this link with your friends:\n${referralLink}\n\nYou earn 50 coins for every active referral.`,
+    { parse_mode: "Markdown" }
+  );
+});
+
+// ========== WITHDRAWAL ==========
+bot.hears("💸 Withdraw", async (ctx) => {
+  await ctx.reply(
+    "💳 To withdraw, please enter your bank details in this format:\n\nBankName,AccountName,AccountNumber,Amount"
+  );
+});
+
+bot.on("text", async (ctx) => {
+  const msg = ctx.message.text;
+  if (msg.includes(",") && msg.split(",").length === 4) {
+    const [bank, name, number, amount] = msg.split(",");
+    const telegramId = ctx.from.id;
+
+    try {
+      await pool.query(
+        "INSERT INTO withdrawals (user_id, bank_name, account_name, account_number, amount) VALUES ($1,$2,$3,$4,$5)",
+        [telegramId, bank.trim(), name.trim(), number.trim(), parseFloat(amount)]
+      );
+      await ctx.reply(
+        "✅ Withdrawal request received! Admin will review shortly."
+      );
+    } catch (err) {
+      console.error(err);
+      await ctx.reply("⚠️ Error submitting withdrawal request.");
+    }
+  }
+});
+
+// ========== ADMIN COMMANDS ==========
+bot.command("admin", async (ctx) => {
+  const telegramId = ctx.from.id.toString();
+  if (!ADMIN_IDS.includes(telegramId)) {
+    return ctx.reply("❌ You are not authorized to use admin commands.");
+  }
+  await ctx.reply(
+    "🛠 Admin Commands:\n/export_withdrawals\n/view_users\n/approve_withdrawal <id>\n/decline_withdrawal <id>"
+  );
+});
+
+// ========== START SERVER ==========
+app.get("/", (req, res) => {
+  res.send("FonPay Task-Earnings Bot Server is running successfully ✅");
+});
+
+app.listen(PORT, async () => {
+  console.log(`Server running on port ${PORT}`);
+  await initializeDatabase();
+});
+
+bot.launch();
+    
