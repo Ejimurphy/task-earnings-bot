@@ -558,4 +558,10 @@ bot.command("transactions", async (ctx) => {
   try {
     const since = new Date(Date.now() - 7 * 24 * 3600 * 1000);
     const adRows = (await pool.query("SELECT * FROM ad_watches WHERE telegram_id=$1 AND created_at >= $2 ORDER BY created_at DESC LIMIT 200", [target, since])).rows;
-    const wRows = (await pool.query("SELECT * FROM withdrawals WHERE telegram_id=$1 AND requested_at >= $2 ORDER BY
+    const wRows = await pool.query(
+  `SELECT * FROM withdrawals 
+   WHERE telegram_id=$1 
+   AND requested_at >= $2 
+   ORDER BY requested_at DESC`,
+  [ctx.from.id, since]
+);
