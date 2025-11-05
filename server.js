@@ -521,8 +521,8 @@ if (state.action === "await_change_bank") {
 
     await ctx.reply("✅ Bank account changed successfully!");
   } catch (err) {
-    console.error("❌ Error changing bank account:", err);
-    await ctx.reply("⚠️ Error processing change request. Try again later.");
+  console.error("❌ Error changing bank account:", err);
+  await ctx.reply("⚠️ Error processing change request. Try again later.");
   }
 
   userState.delete(userId);
