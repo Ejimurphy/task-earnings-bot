@@ -338,6 +338,28 @@ bot.on("text", async (ctx) => {
   }
 });
 
+// ========= UNKNOWN TEXT HANDLER =========
+bot.on("text", async (ctx) => {
+  const text = ctx.message.text.trim();
+
+  // If the message matches none of the commands or buttons
+  if (!text.startsWith("/")) {
+    await ctx.reply(
+      "🤖 I didn’t understand that. Please choose an option below:",
+      {
+        reply_markup: {
+          keyboard: [
+            ["🎥 Perform Task", "💰 My Balance"],
+            ["👥 Refer & Earn", "💸 Withdraw"],
+            ["🏦 Change Bank", "🆘 Get Help"],
+          ],
+          resize_keyboard: true,
+        },
+      }
+    );
+  }
+});
+
 // ========= ADMIN COMMANDS =========
 
 // View all users
@@ -422,4 +444,4 @@ bot.launch()
 // Graceful shutdown
 process.once("SIGINT", () => bot.stop("SIGINT"));
 process.once("SIGTERM", () => bot.stop("SIGTERM"));
-  
+            
