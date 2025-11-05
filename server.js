@@ -316,27 +316,6 @@ bot.hears("🎥 Perform Task", async (ctx) => {
     await ctx.reply("⚠️ Error starting your task.");
   }
 });
-// ========= UNKNOWN TEXT HANDLER =========
-bot.on("text", async (ctx) => {
-  const text = ctx.message.text.trim();
-
-  // If the message matches none of the commands or buttons
-  if (!text.startsWith("/")) {
-    await ctx.reply(
-      "🤖 I didn’t understand that. Please choose an option below:",
-      {
-        reply_markup: {
-          keyboard: [
-            ["🎥 Perform Task", "💰 My Balance"],
-            ["👥 Refer & Earn", "💸 Withdraw"],
-            ["🏦 Change Bank", "🆘 Get Help"],
-          ],
-          resize_keyboard: true,
-        },
-      }
-    );
-  }
-});
 
 // ========= UNKNOWN TEXT HANDLER =========
 bot.on("text", async (ctx) => {
