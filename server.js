@@ -158,27 +158,71 @@ app.post(`/webhook/${BOT_TOKEN}`, async (req, res) => {
     return res.sendStatus(200);
   }
 
-  // Awaiting change bank flow (format: oldBank,oldAcc,oldName|newBank,newAcc,newName)
-  if (state && state.action === "await_change_bank") {
-    if (!text.includes("|")) {
-      await sendMessage(chatId, "⚠️ Invalid format. Send: oldBank,oldAcc,oldName|newBank,newAcc,newName");
-      return res.sendStatus(200);
+  // HANDLE change bank account flow: expecting "oldBank,oldAccNum,oldName | newBank,newAccNum,newName"
+if (state.action === "await_change_bank") {
+  const text = ctx.message.text.trim();
+
+  if (!text.includes("|")) {
+    await ctx.reply(
+      "❌ Invalid format. Please send:\noldBank,oldAccNumber,oldName | newBank,newAccNumber,newName"
+    );
+    state.action = null;
+    return;
+  }
+
+  const [oldStr, newStr] = text.split("|").map((s) => s.trim());
+  const oldParts = oldStr.split(",");
+  const newParts = newStr.split(",");
+
+  if (oldParts.length < 3 || newParts.length < 3) {
+    await ctx.reply(
+      "⚠️ Please send all details correctly:\noldBank,oldAccNumber,oldName | newBank,newAccNumber,newName"
+    );
+    state.action = null;
+    return;
+  }
+
+  const [oldBank, oldAccNum, oldName] = oldParts;
+  const [newBank, newAccNum, newName] = newParts;
+
+  try {
+    const user = await pool.query(
+      "SELECT bank_name, account_number, account_name FROM withdrawals WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1",
+      [ctx.from.id]
+    );
+
+    if (user.rows.length === 0) {
+      await ctx.reply(
+        "⚠️ You have no existing bank account record. Add a new one using the withdrawal option."
+      );
+      state.action = null;
+      return;
     }
-    const [oldStr, newStr] = text.split("|").map(s => s.trim());
-    const oldParts = oldStr.split(",").map(s => s.trim());
-    const newParts = newStr.split(",").map(s => s.trim());
-    if (oldParts.length < 2 || newParts.length < 2) {
-      await sendMessage(chatId, "⚠️ Invalid format. Use oldBank,oldAcc|newBank,newAcc (names optional)");
-      return res.sendStatus(200);
+
+    const current = user.rows[0];
+    if (
+      current.bank_name !== oldBank.trim() ||
+      current.account_number !== oldAccNum.trim()
+    ) {
+      await ctx.reply("❌ The old account details don’t match our record.");
+      state.action = null;
+      return;
     }
-    const [oldBank, oldAcc, oldName] = oldParts;
-    const [newBank, newAcc, newName] = newParts;
-    const existing = userBankAccounts[chatId];
-    if (!existing) {
-      userStates[chatId] = null;
-      await sendMessage(chatId, "⚠️ You have no bank on record. Use /addbank to add one first.");
-      return res.sendStatus(200);
-    }
+
+    await pool.query(
+      "UPDATE withdrawals SET bank_name=$1, account_number=$2, account_name=$3 WHERE user_id=$4",
+      [newBank.trim(), newAccNum.trim(), newName.trim(), ctx.from.id]
+    );
+
+    await ctx.reply("✅ Bank account updated successfully!");
+    state.action = null;
+  } catch (err) {
+    console.error("Error updating bank account:", err);
+    await ctx.reply("⚠️ An error occurred while updating your bank account.");
+    state.action = null;
+  }
+}
+
     // verify old details match (account number mandatory)
     if ((existing.bankName || "").toLowerCase() !== (oldBank || "").toLowerCase() || (existing.accountNumber || "") !== (oldAcc || "")) {
       userStates[chatId] = null;
