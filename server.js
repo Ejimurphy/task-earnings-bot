@@ -1,3 +1,6 @@
+// server.js
+// Task-Earning Bot Backend (Node.js)
+
 import express from "express";
 import bodyParser from "body-parser";
 import sqlite3 from "sqlite3";
@@ -11,7 +14,6 @@ dotenv.config();
 const app = express();
 app.use(bodyParser.json());
 
-// ====== CONFIG ======
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const ADMIN_ID = process.env.ADMIN_ID || "5725566044";
 const COIN_TO_USD = 0.00005;
@@ -19,10 +21,8 @@ const REWARD_PER_TASK = 200;
 const REFERRAL_REWARD = 50;
 const MIN_WITHDRAWAL_COINS = 60000;
 
-// ====== TELEGRAM BOT ======
 const bot = new TelegramBot(TELEGRAM_BOT_TOKEN, { polling: true });
 
-// ====== DATABASE ======
 let db;
 (async () => {
   db = await open({
@@ -58,14 +58,13 @@ let db;
   `);
 })();
 
-// ====== HELPERS ======
 function coinsToUSD(coins) {
   return (coins * COIN_TO_USD).toFixed(2);
 }
 
 async function scheduleNextTask(userId) {
   const now = new Date();
-  const offset = Math.floor(Math.random() * 600000) - 300000; // ±5 mins
+  const offset = Math.floor(Math.random() * 600000) - 300000;
   const nextTime = new Date(now.getTime() + 20 * 60000 + offset);
   await db.run(`UPDATE users SET next_task_time = ? WHERE id = ?`, [
     nextTime.toISOString(),
@@ -73,15 +72,12 @@ async function scheduleNextTask(userId) {
   ]);
 }
 
-// ====== TELEGRAM COMMANDS ======
 bot.onText(/\/start(?: (.+))?/, async (msg, match) => {
   const chatId = msg.chat.id;
   const username = msg.from.username || msg.from.first_name;
   const refCode = match[1];
 
-  let user = await db.get(`SELECT * FROM users WHERE telegram_id = ?`, [
-    chatId,
-  ]);
+  let user = await db.get(`SELECT * FROM users WHERE telegram_id = ?`, [chatId]);
   if (!user) {
     await db.run(
       `INSERT INTO users (telegram_id, username, invited_by) VALUES (?, ?, ?)`,
@@ -89,12 +85,8 @@ bot.onText(/\/start(?: (.+))?/, async (msg, match) => {
     );
     user = await db.get(`SELECT * FROM users WHERE telegram_id = ?`, [chatId]);
 
-    // Give referrer bonus if valid
     if (refCode) {
-      const refUser = await db.get(
-        `SELECT * FROM users WHERE telegram_id = ?`,
-        [refCode]
-      );
+      const refUser = await db.get(`SELECT * FROM users WHERE telegram_id = ?`, [refCode]);
       if (refUser) {
         await db.run(
           `UPDATE users SET wallet_coins = wallet_coins + ? WHERE id = ?`,
@@ -120,39 +112,26 @@ bot.onText(/\/start(?: (.+))?/, async (msg, match) => {
   );
 });
 
-// ====== TASK COMMAND ======
 bot.onText(/\/task/, async (msg) => {
   const chatId = msg.chat.id;
-  const user = await db.get(`SELECT * FROM users WHERE telegram_id = ?`, [
-    chatId,
-  ]);
-
+  const user = await db.get(`SELECT * FROM users WHERE telegram_id = ?`, [chatId]);
   if (!user) return bot.sendMessage(chatId, "Please use /start first.");
   if (user.is_banned) return bot.sendMessage(chatId, "🚫 You are banned.");
 
   const now = new Date();
   const next = new Date(user.next_task_time);
-
   if (now < next) {
     const diff = Math.round((next - now) / 60000);
-    return bot.sendMessage(
-      chatId,
-      `⏳ Please wait ${diff} minutes before your next task.`
-    );
+    return bot.sendMessage(chatId, `⏳ Please wait ${diff} minutes before your next task.`);
   }
 
-  // Task simulation (watching 10 ads)
   await db.run(
     `UPDATE users SET wallet_coins = wallet_coins + ? WHERE id = ?`,
     [REWARD_PER_TASK, user.id]
   );
   await scheduleNextTask(user.id);
 
-  const updated = await db.get(
-    `SELECT wallet_coins FROM users WHERE id = ?`,
-    [user.id]
-  );
-
+  const updated = await db.get(`SELECT wallet_coins FROM users WHERE id = ?`, [user.id]);
   bot.sendMessage(
     chatId,
     `✅ Task completed! You earned ${REWARD_PER_TASK} coins.\n\nWallet: ${updated.wallet_coins} coins ($${coinsToUSD(
@@ -161,36 +140,23 @@ bot.onText(/\/task/, async (msg) => {
   );
 });
 
-// ====== WALLET COMMAND ======
 bot.onText(/\/wallet/, async (msg) => {
   const chatId = msg.chat.id;
-  const user = await db.get(`SELECT * FROM users WHERE telegram_id = ?`, [
-    chatId,
-  ]);
+  const user = await db.get(`SELECT * FROM users WHERE telegram_id = ?`, [chatId]);
   if (!user) return bot.sendMessage(chatId, "Please use /start first.");
-
   bot.sendMessage(
     chatId,
-    `💰 Wallet balance:\n${user.wallet_coins} coins ($${coinsToUSD(
-      user.wallet_coins
-    )}).`
+    `💰 Wallet balance:\n${user.wallet_coins} coins ($${coinsToUSD(user.wallet_coins)}).`
   );
 });
 
-// ====== WITHDRAW COMMAND ======
 bot.onText(/\/withdraw (.+)/, async (msg, match) => {
   const chatId = msg.chat.id;
   const [account_number, bank_name, account_name] = match[1].split(",");
-  const user = await db.get(`SELECT * FROM users WHERE telegram_id = ?`, [
-    chatId,
-  ]);
-
+  const user = await db.get(`SELECT * FROM users WHERE telegram_id = ?`, [chatId]);
   if (!user) return bot.sendMessage(chatId, "Please use /start first.");
   if (user.wallet_coins < MIN_WITHDRAWAL_COINS)
-    return bot.sendMessage(
-      chatId,
-      `🚫 Minimum withdrawal is ${MIN_WITHDRAWAL_COINS} coins.`
-    );
+    return bot.sendMessage(chatId, `🚫 Minimum withdrawal is ${MIN_WITHDRAWAL_COINS} coins.`);
 
   await db.run(
     `INSERT INTO withdrawals (user_id, coins, usd, account_name, account_number, bank_name) VALUES (?, ?, ?, ?, ?, ?)`,
@@ -220,7 +186,6 @@ bot.onText(/\/withdraw (.+)/, async (msg, match) => {
   );
 });
 
-// ====== ADMIN COMMANDS ======
 bot.onText(/\/users/, async (msg) => {
   if (msg.chat.id.toString() !== ADMIN_ID) return;
   const users = await db.all(`SELECT * FROM users`);
@@ -234,25 +199,20 @@ bot.onText(/\/users/, async (msg) => {
 
 bot.onText(/\/withdrawals/, async (msg) => {
   if (msg.chat.id.toString() !== ADMIN_ID) return;
-  const rows = await db.all(
-    `SELECT * FROM withdrawals WHERE status='pending'`
-  );
+  const rows = await db.all(`SELECT * FROM withdrawals WHERE status='pending'`);
   if (!rows.length) return bot.sendMessage(msg.chat.id, "No pending requests.");
   bot.sendMessage(
     msg.chat.id,
     `💵 Pending withdrawals:\n\n${rows
       .map(
-        (r) =>
-          `ID: ${r.id} | ${r.usd} USD | ${r.account_name} (${r.bank_name})`
+        (r) => `ID: ${r.id} | ${r.usd} USD | ${r.account_name} (${r.bank_name})`
       )
       .join("\n")}`
   );
 });
 
-// ====== EXPRESS ROUTE (optional health check) ======
 app.get("/", (req, res) => res.send("Task-Earning Bot Server is running!"));
 
-// ====== CRON JOB TO REMIND USERS ======
 cron.schedule("*/5 * * * *", async () => {
   const now = new Date();
   const rows = await db.all(`SELECT * FROM users WHERE next_task_time IS NOT NULL`);
@@ -268,7 +228,5 @@ cron.schedule("*/5 * * * *", async () => {
   }
 });
 
-// ====== START SERVER ======
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
-              
