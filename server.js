@@ -565,50 +565,65 @@ bot.command("transactions", async (ctx) => {
    ORDER BY requested_at DESC`,
   [ctx.from.id, since]
 );
-// Handle withdraw history
-bot.command("withdraw_history", async (ctx) => {
+    
+// ADMIN: View users’ withdrawal history (last 7 days)
+bot.command("history", async (ctx) => {
+  const telegramId = String(ctx.from.id);
+  if (!ADMIN_TELEGRAM_ID.split(",").includes(telegramId)) {
+    return ctx.reply("❌ You are not authorized to use this command.");
+  }
+
   try {
-    const since = new Date();
-    since.setDate(since.getDate() - 30); // last 30 days
+    const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const wRows = (
+      await pool.query(
+        "SELECT * FROM withdrawals WHERE requested_at >= $1 ORDER BY requested_at DESC",
+        [since]
+      )
+    ).rows;
 
-    const wRows = await pool.query(
-      `SELECT * FROM withdrawals 
-       WHERE telegram_id=$1 
-       AND requested_at >= $2 
-       ORDER BY requested_at DESC`,
-      [ctx.from.id, since]
-    );
-
-    if (wRows.rows.length === 0) {
-      return ctx.reply("You have no withdrawal history in the last 30 days.");
+    if (wRows.length === 0) {
+      return ctx.reply("No withdrawals in the last 7 days.");
     }
 
-    let historyText = "📜 *Withdrawal History (Last 30 Days)*\n\n";
-    wRows.rows.forEach((w) => {
-      historyText += `💸 Amount: ₦${w.amount}\n🏦 Bank: ${w.bank_name}\n📅 Date: ${new Date(
-        w.requested_at
-      ).toLocaleString()}\n📍 Status: ${w.status || "Pending"}\n\n`;
+    let msg = "📅 Withdrawal History (last 7 days):\n\n";
+    wRows.forEach((w) => {
+      msg += `👤 User: ${w.telegram_id}\n💰 Amount: $${w.amount}\n🏦 Bank: ${w.bank_name}\nAcct: ${w.account_number}\nDate: ${new Date(w.requested_at).toLocaleString()}\n\n`;
     });
 
-    await ctx.replyWithMarkdown(historyText);
+    await ctx.reply(msg);
   } catch (err) {
-    console.error("Error in /withdraw_history:", err);
-    ctx.reply("⚠️ Error retrieving withdrawal history. Please try again later.");
+    console.error("Error fetching history:", err);
+    await ctx.reply("⚠️ Error fetching withdrawal history.");
   }
 });
 
-// Handle invalid text inputs
-bot.on("text", (ctx) => {
-  ctx.reply(
-    "🤖 Sorry, I didn’t recognize that command.\nUse /menu or /help to see available options."
-  );
+// Handle invalid commands or random text
+bot.on("text", async (ctx) => {
+  const userText = ctx.message.text?.trim().toLowerCase();
+  const allowedCommands = [
+    "/start",
+    "withdraw",
+    "balance",
+    "perform task",
+    "watch ads",
+    "check wallet",
+    "add bank account",
+    "change bank account",
+    "get help",
+    "history"
+  ];
+
+  if (!allowedCommands.some((cmd) => userText.includes(cmd))) {
+    return ctx.reply("⚠️ Invalid text. Please use available commands only.");
+  }
 });
 
-// Start bot
+// Launch bot
 bot.launch();
 console.log("✅ Task Earnings Bot is running...");
 
 // Graceful stop on termination signals
 process.once("SIGINT", () => bot.stop("SIGINT"));
 process.once("SIGTERM", () => bot.stop("SIGTERM"));
-    
+                            
