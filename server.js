@@ -316,3 +316,111 @@ bot.hears("🎥 Perform Task", async (ctx) => {
     await ctx.reply("⚠️ Error starting your task.");
   }
 });
+// ========= UNKNOWN TEXT HANDLER =========
+bot.on("text", async (ctx) => {
+  const text = ctx.message.text.trim();
+
+  // If the message matches none of the commands or buttons
+  if (!text.startsWith("/")) {
+    await ctx.reply(
+      "🤖 I didn’t understand that. Please choose an option below:",
+      {
+        reply_markup: {
+          keyboard: [
+            ["🎥 Perform Task", "💰 My Balance"],
+            ["👥 Refer & Earn", "💸 Withdraw"],
+            ["🏦 Change Bank", "🆘 Get Help"],
+          ],
+          resize_keyboard: true,
+        },
+      }
+    );
+  }
+});
+
+// ========= ADMIN COMMANDS =========
+
+// View all users
+bot.command("view_users", async (ctx) => {
+  if (!ADMIN_IDS.includes(ctx.from.id)) return;
+  try {
+    const res = await pool.query(
+      "SELECT telegram_id, username, balance FROM users ORDER BY id DESC"
+    );
+    if (res.rows.length === 0) return ctx.reply("No users found.");
+    let msg = "👥 *Registered Users:*\n\n";
+    for (const u of res.rows) {
+      msg += `🧾 ID: ${u.telegram_id}\n👤 @${u.username || "N/A"}\n💰 ₦${u.balance}\n\n`;
+    }
+    await ctx.reply(msg, { parse_mode: "Markdown" });
+  } catch (err) {
+    console.error(err);
+    await ctx.reply("Error fetching users.");
+  }
+});
+
+// Platform stats
+bot.command("stats", async (ctx) => {
+  if (!ADMIN_IDS.includes(ctx.from.id)) return;
+  try {
+    const users = await pool.query("SELECT COUNT(*) FROM users");
+    const withdrawals = await pool.query("SELECT COUNT(*) FROM withdrawals");
+    const pending = await pool.query(
+      "SELECT COUNT(*) FROM withdrawals WHERE status='pending'"
+    );
+
+    await ctx.reply(
+      `📊 *FonPay Bot Stats*\n\n👥 Users: ${users.rows[0].count}\n💸 Withdrawals: ${withdrawals.rows[0].count}\n🕒 Pending: ${pending.rows[0].count}`,
+      { parse_mode: "Markdown" }
+    );
+  } catch (err) {
+    console.error(err);
+    await ctx.reply("Error loading stats.");
+  }
+});
+
+// Broadcast message
+bot.command("broadcast", async (ctx) => {
+  if (!ADMIN_IDS.includes(ctx.from.id)) return;
+  const parts = ctx.message.text.split(" ");
+  parts.shift();
+  const message = parts.join(" ");
+  if (!message) return ctx.reply("Usage: /broadcast your_message");
+
+  try {
+    const res = await pool.query("SELECT telegram_id FROM users");
+    for (const row of res.rows) {
+      await bot.telegram.sendMessage(row.telegram_id, message);
+    }
+    await ctx.reply("✅ Broadcast sent successfully!");
+  } catch (err) {
+    console.error(err);
+    await ctx.reply("❌ Broadcast failed.");
+  }
+});
+
+// ========= EXPRESS SERVER =========
+import express from "express";
+const app = express();
+
+app.get("/", (req, res) => {
+  res.send("✅ FonPay Task-Earnings Bot is running smoothly.");
+});
+
+// Health check endpoint (Render requirement)
+app.get("/health", (req, res) => res.send("OK"));
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`✅ Server running on port ${PORT}`);
+});
+
+// ========= START BOT =========
+bot.launch()
+  .then(() => console.log("🤖 FonPay Task-Earnings Bot started successfully!"))
+  .catch((err) => console.error("Bot launch error:", err));
+
+// Graceful shutdown
+process.once("SIGINT", () => bot.stop("SIGINT"));
+process.once("SIGTERM", () => bot.stop("SIGTERM"));
+  
