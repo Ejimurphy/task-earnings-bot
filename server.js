@@ -395,3 +395,141 @@ function createWithdrawalForUser(userId, coins, usd, bankName, accountName, acco
   return w;
         }
       
+  // HANDLE change bank account flow: expecting "oldBank,oldAccNum,oldName|newBank,newAccNum,newName"
+  if (state.action === "await_change_bank") {
+    if (!text.includes("|")) {
+      return ctx.reply("❌ Invalid format. Please send:\noldBank,oldAccNumber,oldName | newBank,newAccNumber,newName");
+    }
+
+    const [oldStr, newStr] = text.split("|").map(s => s.trim());
+    const [oldBank, oldAcc, oldName] = oldStr.split(",").map(s => s.trim());
+    const [newBank, newAcc, newName] = newStr.split(",").map(s => s.trim());
+
+    const user = getUser(ctx.from.id);
+    if (user.bankDetails && (user.bankDetails.bank !== oldBank || user.bankDetails.accNum !== oldAcc)) {
+      return ctx.reply("⚠️ The old bank details do not match our records. Bank change denied.");
+    }
+
+    user.bankDetails = { bank: newBank, accNum: newAcc, accName: newName };
+    ctx.reply("✅ Bank account updated successfully!");
+    delete userState[ctx.from.id];
+    return;
+  }
+
+  // Handle "Get Help"
+  if (text.toLowerCase() === "get help") {
+    return ctx.reply(
+      "🆘 *FonPay Task-Earnings Support*\n\nNeed assistance?\n• Describe your issue clearly\n• Include your Telegram ID\n\nAn admin will reach out to you shortly.",
+      { parse_mode: "Markdown" }
+    );
+  }
+
+  // INVALID COMMAND HANDLER
+  const validCommands = [
+    "perform task",
+    "withdraw funds",
+    "add bank account",
+    "change bank account",
+    "get help",
+    "check balance",
+    "start"
+  ];
+
+  if (!validCommands.includes(text.toLowerCase()) && !state.action) {
+    return ctx.reply("❌ Invalid text. Please use the available commands from the menu or send /start.");
+  }
+});
+
+// ======================== ADMIN FEATURES ========================
+
+bot.command("admin", ctx => {
+  const id = ctx.from.id.toString();
+  if (!process.env.ADMIN_TELEGRAM_ID.split(",").includes(id)) {
+    return ctx.reply("❌ You are not authorized to use this command.");
+  }
+
+  ctx.reply(
+    "👑 *Admin Commands:*\n\n" +
+    "/recent_users — View users registered in last 7 days\n" +
+    "/recent_transactions — View transactions in last 7 days\n" +
+    "/change_bank — Update a user’s bank account manually\n",
+    { parse_mode: "Markdown" }
+  );
+});
+
+bot.command("recent_users", ctx => {
+  const id = ctx.from.id.toString();
+  if (!process.env.ADMIN_TELEGRAM_ID.split(",").includes(id)) return;
+
+  const recent = Object.values(users)
+    .filter(u => Date.now() - u.joinedAt < 7 * 24 * 60 * 60 * 1000)
+    .map(u => `${u.username} - Balance: ₦${u.balance}`)
+    .join("\n");
+
+  ctx.reply(recent || "No recent users found.");
+});
+
+bot.command("recent_transactions", ctx => {
+  const id = ctx.from.id.toString();
+  if (!process.env.ADMIN_TELEGRAM_ID.split(",").includes(id)) return;
+
+  const transactions = [];
+  Object.values(users).forEach(u => {
+    if (u.transactions) {
+      u.transactions
+        .filter(t => Date.now() - t.date < 7 * 24 * 60 * 60 * 1000)
+        .forEach(t => transactions.push(`${u.username}: ${t.type} ₦${t.amount}`));
+    }
+  });
+
+  ctx.reply(transactions.length ? transactions.join("\n") : "No transactions in the last 7 days.");
+});
+
+bot.command("change_bank", ctx => {
+  const id = ctx.from.id.toString();
+  if (!process.env.ADMIN_TELEGRAM_ID.split(",").includes(id)) return;
+
+  ctx.reply("Send user ID and new bank details in this format:\nuserId|Bank,AccountNumber,AccountName");
+  userState[ctx.from.id] = { action: "admin_change_bank" };
+});
+
+bot.on("text", ctx => {
+  const id = ctx.from.id.toString();
+  const state = userState[id];
+  if (!state) return;
+
+  if (state.action === "admin_change_bank") {
+    if (!text.includes("|")) return ctx.reply("Invalid format. Use: userId|Bank,AccNum,AccName");
+    const [userId, details] = text.split("|").map(s => s.trim());
+    const [bank, accNum, accName] = details.split(",").map(s => s.trim());
+    const target = users[userId];
+    if (!target) return ctx.reply("User not found.");
+
+    target.bankDetails = { bank, accNum, accName };
+    ctx.reply(`✅ Updated ${target.username}'s bank details successfully.`);
+    delete userState[id];
+  }
+});
+
+// ======================== SERVER & BOT START ========================
+
+app.get("/", (req, res) => {
+  res.send(`
+    <html>
+      <head><title>Task Earnings Bot</title></head>
+      <body style="font-family: Arial; text-align: center;">
+        <h2>FonPay Task Earnings Bot is running ✅</h2>
+        <p>Monetag Zone: ${process.env.MONETAG_ZONE}</p>
+        <script src='//libtl.com/sdk.js' data-zone='${process.env.MONETAG_ZONE}' data-sdk='show_${process.env.MONETAG_ZONE}'></script>
+      </body>
+    </html>
+  `);
+});
+
+bot.launch();
+app.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));
+
+// Graceful shutdown
+process.once("SIGINT", () => bot.stop("SIGINT"));
+process.once("SIGTERM", () => bot.stop("SIGTERM"));
+    
