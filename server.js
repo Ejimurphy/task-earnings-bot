@@ -140,3 +140,258 @@ app.post(`/webhook/${BOT_TOKEN}`, async (req, res) => {
   }
 
   // Continue logic (handle user text flows etc.)...
+  // -------------------- CONTINUED WEBHOOK LOGIC & FLOWS --------------------
+
+  // If user is in a state, handle those flows first:
+  const state = userStates[chatId];
+
+  // Awaiting bank details (format: BankName,AccountNumber,AccountName)
+  if (state && state.action === "await_bank_details") {
+    if (!text.includes(",") || text.split(",").length < 3) {
+      await sendMessage(chatId, "⚠️ Invalid format. Send as: BankName,AccountNumber,AccountName");
+      return res.sendStatus(200);
+    }
+    const [bankName, accountNumber, accountName] = text.split(",").map(s => s.trim());
+    userBankAccounts[chatId] = { bankName, accountNumber, accountName };
+    userStates[chatId] = null;
+    await sendMessage(chatId, "✅ Bank account updated successfully. You can now request withdrawals.");
+    return res.sendStatus(200);
+  }
+
+  // Awaiting change bank flow (format: oldBank,oldAcc,oldName|newBank,newAcc,newName)
+  if (state && state.action === "await_change_bank") {
+    if (!text.includes("|")) {
+      await sendMessage(chatId, "⚠️ Invalid format. Send: oldBank,oldAcc,oldName|newBank,newAcc,newName");
+      return res.sendStatus(200);
+    }
+    const [oldStr, newStr] = text.split("|").map(s => s.trim());
+    const oldParts = oldStr.split(",").map(s => s.trim());
+    const newParts = newStr.split(",").map(s => s.trim());
+    if (oldParts.length < 2 || newParts.length < 2) {
+      await sendMessage(chatId, "⚠️ Invalid format. Use oldBank,oldAcc|newBank,newAcc (names optional)");
+      return res.sendStatus(200);
+    }
+    const [oldBank, oldAcc, oldName] = oldParts;
+    const [newBank, newAcc, newName] = newParts;
+    const existing = userBankAccounts[chatId];
+    if (!existing) {
+      userStates[chatId] = null;
+      await sendMessage(chatId, "⚠️ You have no bank on record. Use /addbank to add one first.");
+      return res.sendStatus(200);
+    }
+    // verify old details match (account number mandatory)
+    if ((existing.bankName || "").toLowerCase() !== (oldBank || "").toLowerCase() || (existing.accountNumber || "") !== (oldAcc || "")) {
+      userStates[chatId] = null;
+      await sendMessage(chatId, "🚫 Old bank details don't match our records. New account not updated.");
+      return res.sendStatus(200);
+    }
+    // update to new
+    userBankAccounts[chatId] = { bankName: newBank, accountNumber: newAcc, accountName: newName || existing.accountName };
+    userStates[chatId] = null;
+    await sendMessage(chatId, "✅ Bank account changed successfully.");
+    return res.sendStatus(200);
+  }
+
+  // Awaiting help text (forward to admins)
+  if (state && state.action === "await_help") {
+    // forward the message text to all admins
+    for (const aid of ADMIN_TELEGRAM_ID) {
+      try {
+        await sendMessage(aid, `🆘 Support request from ${chatId}:\n\n${text}`);
+      } catch (e) { /* ignore */ }
+    }
+    userStates[chatId] = null;
+    await sendMessage(chatId, "✅ Your message has been sent to support. An admin will reply shortly.");
+    return res.sendStatus(200);
+  }
+
+  // Handling ad-watching actions when user indicates they've watched one ad (allowing a text trigger /adwatched)
+  if (text === "/adwatched" || (state && state.action === "watching_ads" && text === "AD_WATCHED")) {
+    // If a session mapping exists for this user, increment session count; otherwise increment ad progress
+    if (userAdProgressSessions && userAdProgressSessions[chatId] && userAdProgressSessions[chatId].sessionId) {
+      const sessionId = userAdProgressSessions[chatId].sessionId;
+      sessionCounts[sessionId] = (sessionCounts[sessionId] || 0) + 1;
+      const cnt = sessionCounts[sessionId];
+      const progressBar = getProgressBar(cnt, 10);
+      await sendMessage(chatId, `✅ Ad recorded for session ${sessionId}\n${progressBar}`);
+      if (cnt >= 10) {
+        await sendMessage(chatId, "🎉 You have completed 10 ads for this session. Return to Telegram and press Submit (or use /submit_session <sessionId>).");
+      }
+      return res.sendStatus(200);
+    } else {
+      // no session; increment per-user counter
+      userAdProgress[chatId] = (userAdProgress[chatId] || 0) + 1;
+      const cnt = userAdProgress[chatId];
+      const progressBar = getProgressBar(cnt, 10);
+      if (cnt >= 10) {
+        // credit reward automatically for per-user flow
+        userBalances[chatId] = Number(userBalances[chatId] || 0) + 0; // balance (cash) unchanged in coin flow; we store coins separately
+        userTransactions[chatId].push({ type: "ad_complete", coins: REWARD_PER_TASK, date: new Date().toISOString() });
+        // credit coins mapping (not wallet cash)
+        userAdProgress[chatId] = 10; // cap
+        // store coins in a simple field
+        userCoins = userCoins || {};
+        userCoins[chatId] = (userCoins[chatId] || 0) + REWARD_PER_TASK;
+        await sendMessage(chatId, `🎉 You completed 10 ads — ${REWARD_PER_TASK} coins have been credited to your account.\n${progressBar}`);
+      } else {
+        await sendMessage(chatId, `✅ Ad recorded. ${progressBar}`);
+      }
+      return res.sendStatus(200);
+    }
+  }
+
+  // Submit session explicitly (for session-based flow)
+  if (text.startsWith("/submit_session")) {
+    const parts = text.split(" ");
+    const sessionId = parts[1];
+    if (!sessionId) {
+      await sendMessage(chatId, "Usage: /submit_session <sessionId>");
+      return res.sendStatus(200);
+    }
+    const cnt = sessionCounts[sessionId] || 0;
+    if (cnt < 10) {
+      await sendMessage(chatId, `You have completed ${cnt}/10 ads for session ${sessionId}. Please finish all 10.`);
+      return res.sendStatus(200);
+    }
+    // credit reward
+    userCoins = userCoins || {};
+    userCoins[chatId] = (userCoins[chatId] || 0) + REWARD_PER_TASK;
+    userTransactions[chatId].push({ type: "ad_complete", coins: REWARD_PER_TASK, session: sessionId, date: new Date().toISOString() });
+    await sendMessage(chatId, `✅ Reward credited — ${REWARD_PER_TASK} coins added to your account.`);
+    return res.sendStatus(200);
+  }
+
+  // ADMIN COMMANDS via regular messages (simple commands)
+  if (isAdmin) {
+    // view pending withdrawals
+    if (text === "/view_withdrawals" || text === "/pending_withdrawals") {
+      const list = withdrawals.map(w => `ID:${w.id} User:${w.userId} Coins:${w.amount_coins} USD:${w.amount_usd} Status:${w.status}`).join("\n\n") || "No pending withdrawals.";
+      await sendMessage(chatId, list);
+      return res.sendStatus(200);
+    }
+
+    // approve: /approve <id>
+    if (text.startsWith("/approve")) {
+      const id = (text.split(" ")[1] || "").trim();
+      const w = withdrawals.find(x => String(x.id) === id);
+      if (!w) { await sendMessage(chatId, "Withdrawal not found."); return res.sendStatus(200); }
+      w.status = "approved";
+      w.processed_at = new Date().toISOString();
+      // notify user
+      await sendMessage(w.userId, `✅ Your withdrawal #${id} has been approved by admin.`);
+      await sendMessage(chatId, `Withdrawal ${id} approved.`);
+      return res.sendStatus(200);
+    }
+
+    // decline: /decline <id> reason...
+    if (text.startsWith("/decline")) {
+      const parts = text.split(" ");
+      const id = parts[1];
+      const reason = parts.slice(2).join(" ") || "No reason provided";
+      const w = withdrawals.find(x => String(x.id) === id);
+      if (!w) { await sendMessage(chatId, "Withdrawal not found."); return res.sendStatus(200); }
+      w.status = "declined";
+      w.processed_at = new Date().toISOString();
+      await sendMessage(w.userId, `❌ Your withdrawal #${id} was declined. Reason: ${reason}`);
+      await sendMessage(chatId, `Withdrawal ${id} declined.`);
+      return res.sendStatus(200);
+    }
+
+    // transactions: /transactions <userId>
+    if (text.startsWith("/transactions")) {
+      const target = text.split(" ")[1];
+      if (!target) { await sendMessage(chatId, "Usage: /transactions <telegramId>"); return res.sendStatus(200); }
+      const txs = (userTransactions[target] || []).slice(-100);
+      const summary = txs.map(t => `${t.date} - ${t.type} - ${t.coins || t.amount || 0}`).join("\n") || "No transactions.";
+      await sendMessage(chatId, `Transactions for ${target} (last entries):\n${summary}`);
+      return res.sendStatus(200);
+    }
+  }
+
+  // If message not handled above, and not in a state, check allowed texts; otherwise mark invalid
+  const allowedTexts = ["/start","/watchads","/wallet","/withdraw","/addbank","/changebank","/gethelp","/adwatched","/submit_session","/transactions","/approve","/decline","/view_withdrawals"];
+  if (!state && !allowedTexts.includes(text.split(" ")[0])) {
+    await sendMessage(chatId, "❌ Invalid command. Please use the available commands only.\n\n" + COMMANDS);
+    return res.sendStatus(200);
+  }
+
+  // default ack
+  return res.sendStatus(200);
+});
+
+// -------------------- SESSION & MONETAG SUPPORT (server-side) --------------------
+
+// maps and counters for session-based ad flow
+const sessionCounts = {}; // sessionId => count
+const userAdProgressSessions = {}; // telegramId => { sessionId }
+
+// in-memory withdrawals list (simple incremental id)
+let withdrawals = [];
+let withdrawalIdCounter = 1;
+
+// endpoint that Monetag will POST to on ad validation; expects custom=sessionId=...
+app.post("/api/monetag/postback", express.json(), async (req, res) => {
+  const payload = req.body || {};
+  let sessionId = null;
+  try {
+    const custom = payload.custom || "";
+    if (typeof custom === "string" && custom.includes("sessionId=")) {
+      const m = custom.match(/sessionId=([a-zA-Z0-9-]+)/);
+      if (m) sessionId = m[1];
+    }
+    if (!sessionId && payload.sessionId) sessionId = payload.sessionId;
+    if (!sessionId) {
+      console.warn("postback without sessionId", payload);
+      return res.status(200).send("no-session");
+    }
+    // increment session count
+    sessionCounts[sessionId] = (sessionCounts[sessionId] || 0) + 1;
+    console.log(`postback session ${sessionId} count=${sessionCounts[sessionId]}`);
+    return res.status(200).send("ok");
+  } catch (e) {
+    console.error("monetag postback error", e);
+    return res.status(500).send("error");
+  }
+});
+
+// Create a fresh ad session and return session page (this is used when user clicks watch next ad)
+app.get("/ad-session-create/:telegramId", async (req, res) => {
+  const { telegramId } = req.params;
+  const sessionId = crypto.randomUUID();
+  // map session to user for later reference
+  userAdProgressSessions[telegramId] = { sessionId };
+  sessionCounts[sessionId] = 0;
+  // return ad-session URL that user should open (we also serve /ad-session/:id below)
+  res.json({ sessionUrl: `${BASE_URL}/ad-session/${sessionId}`, sessionId });
+});
+
+// ad-session page serves SDK and polls our session status
+app.get("/ad-session/:sessionId", (req, res) => {
+  const { sessionId } = req.params;
+  res.send(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Ad Session</title></head><body style="font-family: system-ui; padding:20px;"><h3>Watch Ads — Session</h3><p id="status">Loading...</p><div id="progress" style="font-size:22px; margin:12px 0;"></div><button id="openAd">Open Ad</button><script src='//libtl.com/sdk.js' data-zone='${MONETAG_ZONE}' data-sdk='show_${MONETAG_ZONE}'></script><script>const sessionId='${sessionId}';async function refresh(){try{const r=await fetch('/api/session/'+sessionId+'/status');const j=await r.json();const count=j.count||0;document.getElementById('progress').innerText='🔵'.repeat(count)+'⚪'.repeat(Math.max(0,10-count))+' ('+count+'/10)';document.getElementById('status').innerText=count>=10?'Completed — return to Telegram and press Submit':'Watch ads and come back to submit when done';}catch(e){document.getElementById('status').innerText='Error fetching progress';}}document.getElementById('openAd').addEventListener('click', function(){try{show_${MONETAG_ZONE}({type:'inApp',inAppSettings:{frequency:2,capping:0.1,interval:30,timeout:5,everyPage:false},custom:'sessionId='+sessionId});}catch(e){alert('Ad SDK error:'+e);}});setInterval(refresh,3000);refresh();</script></body></html>`);
+});
+
+// session status endpoint for polling
+app.get("/api/session/:sessionId/status", (req, res) => {
+  const { sessionId } = req.params;
+  const cnt = sessionCounts[sessionId] || 0;
+  res.json({ count: cnt });
+});
+
+// function to create a withdrawal entry (in-memory)
+function createWithdrawalForUser(userId, coins, usd, bankName, accountName, accountNumber) {
+  const w = {
+    id: withdrawalIdCounter++,
+    userId,
+    amount_coins: coins,
+    amount_usd: usd,
+    bank_name: bankName,
+    account_name: accountName,
+    account_number: accountNumber,
+    status: "pending",
+    requested_at: new Date().toISOString()
+  };
+  withdrawals.push(w);
+  return w;
+        }
+      
