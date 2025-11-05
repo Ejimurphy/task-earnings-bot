@@ -565,3 +565,49 @@ bot.command("transactions", async (ctx) => {
    ORDER BY requested_at DESC`,
   [ctx.from.id, since]
 );
+// Handle withdraw history
+bot.command("withdraw_history", async (ctx) => {
+  try {
+    const since = new Date();
+    since.setDate(since.getDate() - 30); // last 30 days
+
+    const wRows = await pool.query(
+      `SELECT * FROM withdrawals 
+       WHERE telegram_id=$1 
+       AND requested_at >= $2 
+       ORDER BY requested_at DESC`,
+      [ctx.from.id, since]
+    );
+
+    if (wRows.rows.length === 0) {
+      return ctx.reply("You have no withdrawal history in the last 30 days.");
+    }
+
+    let historyText = "📜 *Withdrawal History (Last 30 Days)*\n\n";
+    wRows.rows.forEach((w) => {
+      historyText += `💸 Amount: ₦${w.amount}\n🏦 Bank: ${w.bank_name}\n📅 Date: ${new Date(
+        w.requested_at
+      ).toLocaleString()}\n📍 Status: ${w.status || "Pending"}\n\n`;
+    });
+
+    await ctx.replyWithMarkdown(historyText);
+  } catch (err) {
+    console.error("Error in /withdraw_history:", err);
+    ctx.reply("⚠️ Error retrieving withdrawal history. Please try again later.");
+  }
+});
+
+// Handle invalid text inputs
+bot.on("text", (ctx) => {
+  ctx.reply(
+    "🤖 Sorry, I didn’t recognize that command.\nUse /menu or /help to see available options."
+  );
+});
+
+// Start bot
+bot.launch();
+console.log("✅ Task Earnings Bot is running...");
+
+// Graceful shutdown
+process.once("SIGINT", () => bot.stop("SIGINT"));
+process.once("SIGTERM", () => bot.stop("SIGTERM"));
