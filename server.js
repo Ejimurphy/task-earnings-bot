@@ -476,14 +476,6 @@ bot.on("text", async (ctx) => {
     return;
   }
 
-  // HANDLE change bank account flow: expecting "oldBank,oldAccNum, newBank,newAccNum"
-  if (state.action === "await_change_bank") {
-    // format: oldBank,oldAcc,oldName;newBank,newAcc,newName (or some agreed format). We'll expect old and new separated by '|'
-    if (!text.includes("|")) {
-      return ctx.reply("Invalid format. Please send: oldBank,oldAccNumber,oldName|newBank,newAccNumber,newName");
-    }
-    const [oldStr, newStr] = text.split("|").map(s =>
-
 // ✅ HANDLE change bank account flow: expecting "oldBank,oldAccNum,oldName|newBank,newAccNum,newName"
 if (state.action === "await_change_bank") {
   if (!text.includes("|")) {
