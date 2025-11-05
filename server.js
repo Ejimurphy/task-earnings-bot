@@ -608,6 +608,7 @@ bot.on("text", (ctx) => {
 bot.launch();
 console.log("✅ Task Earnings Bot is running...");
 
-// Graceful shutdown
+// Graceful stop on termination signals
 process.once("SIGINT", () => bot.stop("SIGINT"));
 process.once("SIGTERM", () => bot.stop("SIGTERM"));
+    
