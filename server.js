@@ -558,23 +558,25 @@ bot.on("text", async (ctx, next) => {
     }
   }
 
-  // ---------- Refer & Earn ----------
-bot.hears(["👥 Refer & Earn", "Refer & Earn", "Refer and Earn"], async (ctx) => {
+  // Accept multiple label variants for Refer
+bot.hears(["👥 Refer & Earn", "Refer & Earn", "Refer and Earn", "Refer"], async (ctx) => {
   const telegramId = ctx.from.id;
-  const referralLink = `https://t.me/${ctx.botInfo.username}?start=${telegramId}`;
-
+  const username = ctx.from.username || telegramId;
+  const link = `https://t.me/${ctx.botInfo.username}?start=${telegramId}`;
   await ctx.reply(
-    `👥 *Refer & Earn!*\n\nShare your referral link:\n${referralLink}\n\nYou earn 50 coins for every friend who registers and completes at least one task!`,
-    { parse_mode: "Markdown" }
+    `👥 *Refer & Earn*\nShare your link and earn ${REFERRAL_REWARD_COINS} coins when someone signs up using your link:\n\n${link}`,
+    { parse_mode: "Markdown", reply_markup: mainMenuKeyboard() }
   );
 });
 
-// ---------- Change Bank ----------
-bot.hears(["🏦 Change Bank", "Change Bank"], async (ctx) => {
-  const telegramId = ctx.from.id;
 
+bot.hears(["🏦 Change Bank", "Change Bank", "Change bank"], async (ctx) => {
   await ctx.reply(
-    "🏦 To change your bank account, please send
+    "To change bank account, send the details in this format:\n\noldBank,oldAccNumber,oldName|newBank,newAccNumber,newName\n\nOr send new details if you don't have a previous one: BankName,AccountNumber,AccountName",
+    { reply_markup: mainMenuKeyboard() }
+  );
+});
+
 
   // ---------- Change bank flow: old|new format ----------
   if (text.includes("|") && text.split("|").length === 2 && text.split("|")[0].includes(",") && text.split("|")[1].includes(",")) {
