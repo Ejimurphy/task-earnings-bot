@@ -1,30 +1,46 @@
-// ==========================
-// Task Earnings Bot - Server (Stable Final)
-// Admins: 5236441213, 5725566044
-// Monetag Zone: 10136395
-// ==========================
+// server.js — Part 1/3
+// Full Task-Earnings Bot (Part 1)
+// Monetag zone: 10136395
+// Admins: 5236441213,5725566044
 
 import express from "express";
-import { Telegraf } from "telegraf";
+import { Telegraf, Markup } from "telegraf";
 import pkg from "pg";
 import dotenv from "dotenv";
+import crypto from "crypto";
 
 dotenv.config();
 const { Pool } = pkg;
 
-const app = express();
-app.use(express.json());
-
-// ========= ENV =========
-const BOT_TOKEN = process.env.BOT_TOKEN;
-const DATABASE_URL = process.env.DATABASE_URL;
+// ---------- Config ----------
+const BOT_TOKEN = process.env.BOT_TOKEN; // required
+const DATABASE_URL = process.env.DATABASE_URL; // required
 const PORT = process.env.PORT || 10000;
 const MONETAG_ZONE = process.env.MONETAG_ZONE || "10136395";
 const ADMIN_IDS = (process.env.ADMIN_TELEGRAM_ID || "5236441213,5725566044")
   .split(",")
-  .map((id) => id.trim());
+  .map((s) => s.trim())
+  .filter(Boolean)
+  .map((s) => s);
 
-// ========= DB =========
+const COIN_TO_USD = Number(process.env.COIN_TO_USD || 0.00005); // default 0.00005 dollars per coin
+const REWARD_PER_TASK_COINS = Number(process.env.REWARD_PER_TASK_COINS || 200);
+const REFERRAL_REWARD_COINS = Number(process.env.REFERRAL_REWARD_COINS || 50);
+const MIN_WITHDRAW_COINS = Number(process.env.MIN_WITHDRAW_COINS || 60000); // per your earlier requirement
+
+if (!BOT_TOKEN) {
+  console.error("BOT_TOKEN missing in .env");
+  process.exit(1);
+}
+if (!DATABASE_URL) {
+  console.error("DATABASE_URL missing in .env");
+  process.exit(1);
+}
+
+// ---------- App, DB, Bot ----------
+const app = express();
+app.use(express.json());
+
 const pool = new Pool({
   connectionString: DATABASE_URL,
   ssl: { rejectUnauthorized: false },
@@ -37,231 +53,502 @@ async function initializeDatabase() {
         id SERIAL PRIMARY KEY,
         telegram_id BIGINT UNIQUE,
         username TEXT,
-        balance NUMERIC DEFAULT 0,
         coins BIGINT DEFAULT 0,
+        balance NUMERIC DEFAULT 0,
         referred_by BIGINT,
+        referral_credited BOOLEAN DEFAULT FALSE,
         bank_name TEXT,
-        account_name TEXT,
-        account_number TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        bank_account_number TEXT,
+        bank_account_name TEXT,
+        is_banned BOOLEAN DEFAULT FALSE,
+        next_task_available_at TIMESTAMP,
+        created_at TIMESTAMP DEFAULT NOW()
       );
 
-      CREATE TABLE IF NOT EXISTS withdrawals (
-        id SERIAL PRIMARY KEY,
-        user_id BIGINT REFERENCES users(telegram_id),
-        amount NUMERIC,
-        status TEXT DEFAULT 'pending',
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      CREATE TABLE IF NOT EXISTS ad_sessions (
+        id TEXT PRIMARY KEY,
+        telegram_id BIGINT,
+        completed BOOLEAN DEFAULT FALSE,
+        created_at TIMESTAMP DEFAULT NOW()
       );
 
       CREATE TABLE IF NOT EXISTS ad_views (
         id SERIAL PRIMARY KEY,
-        user_id BIGINT REFERENCES users(telegram_id),
-        ad_count INT DEFAULT 0,
-        completed BOOLEAN DEFAULT FALSE,
-        last_watch TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        session_id TEXT REFERENCES ad_sessions(id) ON DELETE CASCADE,
+        telegram_id BIGINT,
+        ad_index INT,
+        validated BOOLEAN DEFAULT FALSE,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS withdrawals (
+        id SERIAL PRIMARY KEY,
+        telegram_id BIGINT,
+        coins BIGINT,
+        usd NUMERIC,
+        bank_name TEXT,
+        account_name TEXT,
+        account_number TEXT,
+        status TEXT DEFAULT 'pending',
+        admin_note TEXT,
+        requested_at TIMESTAMP DEFAULT NOW(),
+        processed_at TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS transactions (
+        id SERIAL PRIMARY KEY,
+        telegram_id BIGINT,
+        type TEXT,
+        coins BIGINT DEFAULT 0,
+        amount NUMERIC DEFAULT 0,
+        meta JSONB,
+        created_at TIMESTAMP DEFAULT NOW()
       );
     `);
-    console.log("✅ Database initialized successfully");
-  } catch (err) {
-    console.error("❌ DB init failed:", err);
+    console.log("✅ Database initialized");
+  } catch (e) {
+    console.error("DB init error:", e);
   }
 }
 
-// ========= BOT =========
 const bot = new Telegraf(BOT_TOKEN);
 
+// ---------- Utilities ----------
+function isAdmin(telegramId) {
+  return ADMIN_IDS.includes(String(telegramId));
+}
+function coinsToUSD(coins) {
+  return (Number(coins) * COIN_TO_USD).toFixed(2);
+}
+function nowSQL() {
+  return new Date().toISOString();
+}
+async function safeQuery(q, params = []) {
+  return pool.query(q, params);
+}
+const ALLOWED_TEXTS = new Set([
+  "💼 Wallet Balance",
+  "🎥 Perform Task",
+  "💸 Withdraw",
+  "👥 Refer & Earn",
+  "🏦 Change Bank",
+  "🆘 Get Help",
+  "Done",
+  "Submit",
+]);
+
+// ---------- Bot: /start with referral ----------
 bot.start(async (ctx) => {
   const telegramId = ctx.from.id;
-  const username = ctx.from.username || "Unknown";
-  const refId = ctx.startPayload ? Number(ctx.startPayload) : null;
+  const username = ctx.from.username || ctx.from.first_name || "User";
+  const payload = ctx.startPayload || null; // telegraf sets ctx.startPayload when user opens /start payload
+  const referredBy = payload && /^\d+$/.test(payload) ? Number(payload) : null;
 
   try {
-    const user = await pool.query("SELECT * FROM users WHERE telegram_id=$1", [
+    const r = await safeQuery("SELECT * FROM users WHERE telegram_id=$1", [
       telegramId,
     ]);
-
-    if (user.rows.length === 0) {
-      await pool.query(
-        "INSERT INTO users (telegram_id, username, referred_by) VALUES ($1,$2,$3)",
-        [telegramId, username, refId]
+    if (r.rows.length === 0) {
+      await safeQuery(
+        "INSERT INTO users (telegram_id, username, referred_by, next_task_available_at) VALUES ($1,$2,$3,NOW())",
+        [telegramId, username, referredBy]
       );
-
-      if (refId) {
-        await pool.query("UPDATE users SET coins = coins + 100 WHERE telegram_id=$1", [refId]);
+      // referral credit (first time) if referredBy exists
+      if (referredBy) {
+        await safeQuery(
+          "UPDATE users SET coins = coins + $1 WHERE telegram_id=$2",
+          [REFERRAL_REWARD_COINS, referredBy]
+        );
+        await safeQuery(
+          "INSERT INTO transactions (telegram_id, type, coins, meta) VALUES ($1,'referral_credit',$2,$3)",
+          [referredBy, REFERRAL_REWARD_COINS, JSON.stringify({ from: telegramId })]
+        );
+        try {
+          await bot.telegram.sendMessage(
+            referredBy,
+            `🎉 You earned ${REFERRAL_REWARD_COINS} coins for referring ${username}!`
+          );
+        } catch (e) {}
       }
-
       await ctx.reply(
-        `🎉 Welcome, ${username}!\nYour FonPay Task account is ready.\n\nUse /menu to view options.`
+        `🎉 Welcome, ${username}! Your FonPay Task account is created.\nUse /menu to open the dashboard.`
       );
     } else {
       await ctx.reply(`👋 Welcome back, ${username}! Use /menu to continue.`);
     }
-  } catch (err) {
-    console.error(err);
-    await ctx.reply("⚠️ Error creating your account.");
+  } catch (e) {
+    console.error("start error:", e);
+    await ctx.reply("⚠️ Error while starting. Try again later.");
   }
 });
 
-// ========= MENU =========
+// ---------- Menu keyboard helper ----------
+function mainMenuKeyboard() {
+  return Markup.keyboard([
+    ["💼 Wallet Balance", "🎥 Perform Task"],
+    ["💸 Withdraw", "👥 Refer & Earn"],
+    ["🏦 Change Bank", "🆘 Get Help"],
+  ]).resize();
+}
+
+// ---------- /menu ----------
 bot.command("menu", async (ctx) => {
-  const keyboard = [
-    [{ text: "💼 Wallet Balance" }, { text: "🎥 Perform Task" }],
-    [{ text: "💸 Withdraw" }, { text: "👥 Refer & Earn" }],
-    [{ text: "🏦 Change Bank" }, { text: "🆘 Get Help" }],
-  ];
-  await ctx.reply("📍 Choose an option below:", {
-    reply_markup: { keyboard, resize_keyboard: true },
-  });
+  await ctx.reply("📍 Choose an option:", mainMenuKeyboard());
 });
 
-// ========= WALLET =========
+// ---------- Wallet balance (coins + USD + cash) ----------
 bot.hears("💼 Wallet Balance", async (ctx) => {
   const telegramId = ctx.from.id;
   try {
-    const res = await pool.query(
-      "SELECT balance, coins FROM users WHERE telegram_id=$1",
+    const r = await safeQuery(
+      "SELECT coins, balance, bank_name FROM users WHERE telegram_id=$1",
       [telegramId]
     );
-    if (res.rows.length === 0)
-      return ctx.reply("⚠️ You don’t have a wallet yet. Type /start first.");
-
-    const { balance, coins } = res.rows[0];
-    const dollarValue = (coins * 0.00005).toFixed(2);
+    if (!r.rows[0]) return ctx.reply("⚠️ No wallet found. Send /start to register.");
+    const { coins, balance, bank_name } = r.rows[0];
+    const usd = coinsToUSD(coins);
     await ctx.reply(
-      `💰 *Wallet Summary*\n\nCoins: ${coins} 🪙\n≈ $${dollarValue}\nCash: ₦${balance}\n\n#PayWithFonPayAndRelax`,
+      `💰 Wallet Summary\nCoins: ${coins} 🪙\nEquivalent: $${usd}\nCash balance: ₦${Number(balance || 0)}\nBank: ${bank_name || "Not set"}`,
       { parse_mode: "Markdown" }
     );
   } catch (e) {
-    console.error(e);
+    console.error("wallet error", e);
     await ctx.reply("⚠️ Error fetching wallet details.");
   }
 });
 
-// ========= TASK =========
+// ---------- Perform Task: create ad_session and provide link ----------
 bot.hears("🎥 Perform Task", async (ctx) => {
   const telegramId = ctx.from.id;
   try {
-    await pool.query(
-      "INSERT INTO ad_views (user_id, ad_count, completed) VALUES ($1,0,FALSE) ON CONFLICT (user_id) DO NOTHING",
-      [telegramId]
-    );
+    // Check ban
+    const u = await safeQuery("SELECT is_banned FROM users WHERE telegram_id=$1", [telegramId]);
+    if (u.rows[0] && u.rows[0].is_banned) return ctx.reply("🚫 Your account is banned.");
 
-    const { rows } = await pool.query(
-      "SELECT ad_count FROM ad_views WHERE user_id=$1",
-      [telegramId]
-    );
-    const count = rows.length ? rows[0].ad_count : 0;
+    // create ad_session
+    const sessionId = crypto.randomUUID();
+    await safeQuery("INSERT INTO ad_sessions (id, telegram_id, completed) VALUES ($1,$2,false)", [
+      sessionId,
+      telegramId,
+    ]);
 
+    // ad-session URL on this server
+    const sessionUrl = `${process.env.BASE_URL || `https://your-app-url.example`}/ad-session/${sessionId}`;
+    // for safety send both link and the monetag main url
     await ctx.reply(
-      `🎬 *Task Started!*\nProgress: ${count}/10 ads watched.\n\nClick below to watch ads 👇\nhttps://fonpay.digital/ads?zone=${MONETAG_ZONE}\n\nAfter all 10 ads, type *Done* to claim reward.`,
+      `🎬 Task session created (session: ${sessionId}).\nProgress: 0/10\n\nOpen this link to watch ads and track progress:\n${sessionUrl}\n\nIf the page doesn't open, watch at https://www.monetag.com/?zone=${MONETAG_ZONE}`,
       { parse_mode: "Markdown" }
     );
   } catch (e) {
-    console.error(e);
-    await ctx.reply("⚠️ Error starting your task.");
+    console.error("perform task error", e);
+    await ctx.reply("⚠️ Error creating task session.");
   }
 });
 
-// ========= REFERRAL =========
-bot.hears("👥 Refer & Earn", async (ctx) => {
-  const id = ctx.from.id;
-  const link = `https://t.me/${ctx.botInfo.username}?start=${id}`;
-  await ctx.reply(
-    `👥 *Refer & Earn*\n\nShare your referral link:\n${link}\n\nEarn 100 coins for each referral who joins!`,
-    { parse_mode: "Markdown" }
-  );
+// ---------- Ad session page (serves Monetag SDK + progress) ----------
+app.get("/ad-session/:sessionId", async (req, res) => {
+  const { sessionId } = req.params;
+  // simple html that loads Monetag SDK and polls /api/session/:id/status
+  res.send(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Ad Session</title></head><body style="font-family: system-ui; padding:20px;"><h3>Watch Ads — Session</h3><p id="status">Loading...</p><div id="progress" style="font-size:22px; margin:12px 0;"></div><button id="openAd">Open Ad</button><script src='//libtl.com/sdk.js' data-zone='${MONETAG_ZONE}' data-sdk='show_${MONETAG_ZONE}'></script><script>const sessionId='${sessionId}';async function refresh(){try{const r=await fetch('/api/session/'+sessionId+'/status');const j=await r.json();const count=j.count||0;document.getElementById('progress').innerText='🔵'.repeat(count)+'⚪'.repeat(Math.max(0,10-count))+' ('+count+'/10)';document.getElementById('status').innerText=count>=10?'Completed — return to Telegram and Submit':'Watch ads and come back to submit when done';}catch(e){document.getElementById('status').innerText='Error fetching progress';}};document.getElementById('openAd').addEventListener('click',function(){try{show_${MONETAG_ZONE}({type:'inApp',inAppSettings:{frequency:2,capping:0.1,interval:30,timeout:5,everyPage:false},custom:'sessionId='+sessionId});}catch(e){alert('Ad SDK error:'+e);}});setInterval(refresh,3000);refresh();</script></body></html>`);
 });
 
-// ========= WITHDRAWAL =========
+// ---------- Session status endpoint ----------
+app.get("/api/session/:sessionId/status", async (req, res) => {
+  const { sessionId } = req.params;
+  try {
+    const r = await safeQuery("SELECT COUNT(*) as c FROM ad_views WHERE session_id=$1 AND validated=true", [sessionId]);
+    const cnt = Number(r.rows[0].c || 0);
+    res.json({ count: cnt });
+  } catch (e) {
+    console.error("session status err", e);
+    res.json({ count: 0 });
+  }
+});
+
+// ---------- Monetag server-side postback (validate ad events) ----------
+app.post("/api/monetag/postback", express.json(), async (req, res) => {
+  // Monetag will post validation events here with custom sessionId or other identifiers
+  const payload = req.body || {};
+  try {
+    // Monetag custom may include sessionId=xxxx
+    let sessionId = null;
+    if (payload.custom && typeof payload.custom === "string") {
+      const m = payload.custom.match(/sessionId=([a-zA-Z0-9-]+)/);
+      if (m) sessionId = m[1];
+    }
+    if (!sessionId && payload.sessionId) sessionId = payload.sessionId;
+    if (!sessionId) {
+      console.warn("postback missing sessionId", payload);
+      return res.status(400).send("missing-session");
+    }
+    const telegramId = payload.user_id || null;
+    const adIndex = payload.ad_index ? Number(payload.ad_index) : null;
+    await safeQuery(
+      "INSERT INTO ad_views (session_id, telegram_id, ad_index, validated) VALUES ($1,$2,$3,$4)",
+      [sessionId, telegramId, adIndex, true]
+    );
+    // If 10 validated reached, optionally auto-credit (we won't auto-credit here; admin or user submit will credit)
+    return res.status(200).send("ok");
+  } catch (e) {
+    console.error("monetag postback error", e);
+    return res.status(500).send("error");
+  }
+});
+
+// ---------- Submit session (user requests reward after 10 validated ads) ----------
+bot.command("submit_session", async (ctx) => {
+  // Usage: /submit_session <sessionId>
+  const parts = (ctx.message.text || "").split(" ").filter(Boolean);
+  const sessionId = parts[1];
+  if (!sessionId) return ctx.reply("Usage: /submit_session <sessionId>");
+  try {
+    // check validated count
+    const r = await safeQuery("SELECT COUNT(*) as c, telegram_id FROM ad_views JOIN ad_sessions ON ad_views.session_id = ad_sessions.id WHERE ad_views.session_id=$1 AND ad_views.validated=true GROUP BY ad_sessions.telegram_id", [sessionId]);
+    const cnt = Number(r.rows[0]?.c || 0);
+    const telegramId = r.rows[0]?.telegram_id;
+    if (cnt < 10) return ctx.reply(`You completed ${cnt}/10 ads. Finish them before submitting.`);
+    // check session completed
+    const sess = await safeQuery("SELECT completed, telegram_id FROM ad_sessions WHERE id=$1", [sessionId]);
+    if (!sess.rows[0]) return ctx.reply("Session not found.");
+    if (sess.rows[0].completed) return ctx.reply("Reward already claimed for this session.");
+    // credit reward: coins
+    await pool.query("BEGIN");
+    await safeQuery("UPDATE users SET coins = coins + $1 WHERE telegram_id=$2", [REWARD_PER_TASK_COINS, telegramId]);
+    await safeQuery("UPDATE ad_sessions SET completed=true WHERE id=$1", [sessionId]);
+    await safeQuery("INSERT INTO transactions (telegram_id, type, coins, meta) VALUES ($1,'ad_reward',$2,$3)", [telegramId, REWARD_PER_TASK_COINS, JSON.stringify({ sessionId })]);
+    // referral handling (first-time credit check is simpler: no multi-level here unless you want)
+    const ref = await safeQuery("SELECT referred_by, referral_credited FROM users WHERE telegram_id=$1", [telegramId]);
+    if (ref.rows[0] && ref.rows[0].referred_by && !ref.rows[0].referral_credited) {
+      await safeQuery("UPDATE users SET coins = coins + $1 WHERE telegram_id = $2", [REFERRAL_REWARD_COINS, ref.rows[0].referred_by]);
+      await safeQuery("UPDATE users SET referral_credited = TRUE WHERE telegram_id=$1", [telegramId]);
+      // notify referrer
+      try { await bot.telegram.sendMessage(ref.rows[0].referred_by, `🎉 You earned ${REFERRAL_REWARD_COINS} coins from a referral!`); } catch(e){}
+    }
+    await pool.query("COMMIT");
+    await ctx.reply(`✅ Reward credited: ${REWARD_PER_TASK_COINS} coins added to your wallet.`);
+    // set next_task_available_at with random offset (20 minutes ±5min)
+    const offsetSeconds = Math.floor(Math.random() * 600) - 300;
+    await safeQuery("UPDATE users SET next_task_available_at = NOW() + INTERVAL '20 minutes' + ($1 || ' seconds')::interval WHERE telegram_id=$1", [offsetSeconds, telegramId]);
+  } catch (e) {
+    try { await pool.query("ROLLBACK"); } catch(_) {}
+    console.error("submit_session error", e);
+    await ctx.reply("⚠️ Error processing submission. Try again later.");
+  }
+});
+
+// ---------- Withdraw flow with bank details and checks ----------
 bot.hears("💸 Withdraw", async (ctx) => {
   const telegramId = ctx.from.id;
   try {
-    const res = await pool.query("SELECT balance FROM users WHERE telegram_id=$1", [telegramId]);
-    if (res.rows.length === 0) return ctx.reply("⚠️ No wallet found.");
-    const { balance } = res.rows[0];
-    if (balance < 500) return ctx.reply("❌ Minimum withdrawal is ₦500.");
-    await pool.query(
-      "INSERT INTO withdrawals (user_id, amount) VALUES ($1,$2)",
-      [telegramId, balance]
-    );
-    await pool.query("UPDATE users SET balance=0 WHERE telegram_id=$1", [telegramId]);
-    await ctx.reply("✅ Withdrawal request submitted. Admin will review shortly.");
-  } catch (err) {
-    console.error(err);
+    const r = await safeQuery("SELECT coins, bank_name, bank_account_number, bank_account_name FROM users WHERE telegram_id=$1", [telegramId]);
+    const user = r.rows[0];
+    if (!user) return ctx.reply("⚠️ You don't have an account. Send /start.");
+    const coins = Number(user.coins || 0);
+    if (coins < MIN_WITHDRAW_COINS) return ctx.reply(`❌ Insufficient balance. Minimum withdrawal is ${MIN_WITHDRAW_COINS} coins (~$${coinsToUSD(MIN_WITHDRAW_COINS)}). Do more tasks to increase your balance.`);
+    if (!user.bank_account_number) {
+      // ask user to send bank details
+      await ctx.reply("🏦 Please add your bank details in this format:\nBankName,AccountNumber,AccountName");
+      // set simple state in-memory via DB-less approach: we will expect the next message matching format to be bank add
+      return;
+    }
+    // create withdraw request
+    const usd = coinsToUSD(coins);
+    await safeQuery("INSERT INTO withdrawals (telegram_id, coins, usd, bank_name, account_name, account_number, status) VALUES ($1,$2,$3,$4,$5,$6,'pending')", [telegramId, coins, usd, user.bank_name, user.bank_account_name, user.bank_account_number]);
+    await safeQuery("UPDATE users SET coins=0 WHERE telegram_id=$1", [telegramId]);
+    await safeQuery("INSERT INTO transactions (telegram_id, type, coins, amount, meta) VALUES ($1,'withdraw_request',$2,$3,$4)", [telegramId, coins, usd, JSON.stringify({ bank: user.bank_name })]);
+    await ctx.reply(`✅ Withdrawal requested: ${coins} coins (~$${usd}). Admin will review.`);
+    // notify admins
+    for (const aid of ADMIN_IDS) {
+      try {
+        await bot.telegram.sendMessage(aid, `📢 Withdrawal Request\nUser: ${telegramId}\nCoins: ${coins}\nUSD: $${usd}\nBank: ${user.bank_account_name} ${user.bank_account_number} (${user.bank_name})\nUse /pending_withdrawals to view.`);
+      } catch (e) {}
+    }
+  } catch (e) {
+    console.error("withdraw error", e);
     await ctx.reply("⚠️ Error processing withdrawal.");
   }
 });
 
-// ========= ADMIN COMMANDS =========
-bot.command("view_users", async (ctx) => {
-  if (!ADMIN_IDS.includes(String(ctx.from.id))) return;
-  try {
-    const res = await pool.query(
-      "SELECT telegram_id, username, balance FROM users ORDER BY id DESC"
-    );
-    if (res.rows.length === 0) return ctx.reply("No users found.");
-    let msg = "👥 *Registered Users:*\n\n";
-    for (const u of res.rows) {
-      msg += `🧾 ID: ${u.telegram_id}\n👤 @${u.username || "N/A"}\n💰 ₦${u.balance}\n\n`;
+// ---------- Save bank details when user sends BankName,AccountNumber,AccountName ----------
+bot.on("text", async (ctx, next) => {
+  const text = (ctx.message.text || "").trim();
+  const telegramId = ctx.from.id;
+  // bank add pattern
+  if (text.includes(",") && text.split(",").length === 3) {
+    const [bankName, accountNumber, accountName] = text.split(",").map(s => s.trim());
+    // simple validation accountNumber digits
+    if (!/^\d+$/.test(accountNumber)) {
+      return ctx.reply("⚠️ Invalid account number. Use digits only.");
     }
-    await ctx.reply(msg, { parse_mode: "Markdown" });
-  } catch (err) {
-    console.error(err);
-    await ctx.reply("Error fetching users.");
-  }
-});
-
-bot.command("stats", async (ctx) => {
-  if (!ADMIN_IDS.includes(String(ctx.from.id))) return;
-  try {
-    const users = await pool.query("SELECT COUNT(*) FROM users");
-    const withdrawals = await pool.query("SELECT COUNT(*) FROM withdrawals");
-    const pending = await pool.query(
-      "SELECT COUNT(*) FROM withdrawals WHERE status='pending'"
-    );
-
-    await ctx.reply(
-      `📊 *FonPay Bot Stats*\n👥 Users: ${users.rows[0].count}\n💸 Withdrawals: ${withdrawals.rows[0].count}\n🕒 Pending: ${pending.rows[0].count}`,
-      { parse_mode: "Markdown" }
-    );
-  } catch (err) {
-    console.error(err);
-    await ctx.reply("Error loading stats.");
-  }
-});
-
-bot.command("broadcast", async (ctx) => {
-  if (!ADMIN_IDS.includes(String(ctx.from.id))) return;
-  const message = ctx.message.text.split(" ").slice(1).join(" ");
-  if (!message) return ctx.reply("Usage: /broadcast your_message");
-  try {
-    const res = await pool.query("SELECT telegram_id FROM users");
-    for (const row of res.rows) {
-      await bot.telegram.sendMessage(row.telegram_id, message);
+    try {
+      // check if user has existing bank
+      const r = await safeQuery("SELECT bank_account_number FROM users WHERE telegram_id=$1", [telegramId]);
+      if (r.rows[0] && r.rows[0].bank_account_number) {
+        // this is a bank change request — require old|new? we implemented change flow via Change Bank option below
+        await safeQuery("UPDATE users SET bank_name=$1, bank_account_number=$2, bank_account_name=$3 WHERE telegram_id=$4", [bankName, accountNumber, accountName, telegramId]);
+        await ctx.reply("✅ Bank account updated successfully.");
+        return;
+      } else {
+        // first time add
+        await safeQuery("UPDATE users SET bank_name=$1, bank_account_number=$2, bank_account_name=$3 WHERE telegram_id=$4", [bankName, accountNumber, accountName, telegramId]);
+        await ctx.reply("✅ Bank account saved. You can now request withdrawals.");
+        return;
+      }
+    } catch (e) {
+      console.error("save bank err", e);
+      return ctx.reply("⚠️ Error saving bank details.");
     }
-    await ctx.reply("✅ Broadcast sent successfully!");
-  } catch (err) {
-    console.error(err);
-    await ctx.reply("❌ Broadcast failed.");
+  }
+  // ---------- Change bank flow: old|new format ----------
+  if (text.includes("|") && text.split("|").length === 2 && text.split("|")[0].includes(",") && text.split("|")[1].includes(",")) {
+    // oldBank,oldAcc,oldName|newBank,newAcc,newName
+    const [oldStr, newStr] = text.split("|").map(s => s.trim());
+    const [oldBank, oldAcc, oldName] = oldStr.split(",").map(s => s.trim());
+    const [newBank, newAcc, newName] = newStr.split(",").map(s => s.trim());
+    try {
+      const r = await safeQuery("SELECT bank_name, bank_account_number FROM users WHERE telegram_id=$1", [telegramId]);
+      const user = r.rows[0];
+      if (!user || !user.bank_account_number) {
+        return ctx.reply("⚠️ No existing bank on record. Use BankName,AccountNumber,AccountName to add first.");
+      }
+      if ((user.bank_name || "").toLowerCase() !== (oldBank || "").toLowerCase() || (user.bank_account_number || "") !== (oldAcc || "")) {
+        return ctx.reply("🚫 Old bank details do not match our records. New account not updated.");
+      }
+      await safeQuery("UPDATE users SET bank_name=$1, bank_account_number=$2, bank_account_name=$3 WHERE telegram_id=$4", [newBank, newAcc, newName || user.bank_account_name, telegramId]);
+      return ctx.reply("✅ Bank account changed successfully.");
+    } catch (e) {
+      console.error("change bank err", e);
+      return ctx.reply("⚠️ Error changing bank details.");
+    }
+  }
+  // If not matched, pass to next() so other handlers can process (e.g., unknown command)
+  return next();
+});
+
+// ---------- Get Help ----------
+bot.hears("🆘 Get Help", async (ctx) => {
+  const telegramId = ctx.from.id;
+  await ctx.reply("💬 Please describe your issue. Your message will be forwarded to admin.");
+  // next message from user will be forwarded by the previous on("text") middleware because of next() call.
+});
+
+// ---------- Admin: list pending withdrawals ----------
+bot.command("pending_withdrawals", async (ctx) => {
+  if (!isAdmin(ctx.from.id)) return ctx.reply("❌ You are not authorized.");
+  try {
+    const r = await safeQuery("SELECT id, telegram_id, coins, usd, bank_name, account_name, account_number, status FROM withdrawals WHERE status='pending' ORDER BY requested_at DESC");
+    if (r.rows.length === 0) return ctx.reply("No pending withdrawals.");
+    let msg = "📥 Pending Withdrawals:\n\n";
+    for (const w of r.rows) {
+      msg += `ID:${w.id} User:${w.telegram_id} Coins:${w.coins} USD:${w.usd} Bank:${w.bank_name} ${w.account_number}\n\n`;
+    }
+    await ctx.reply(msg);
+  } catch (e) {
+    console.error("pending_withdrawals err", e);
+    await ctx.reply("Error fetching pending withdrawals.");
   }
 });
 
-// ========= EXPRESS SERVER =========
-app.get("/", (req, res) => {
-  res.send("✅ FonPay Task-Earnings Bot is running smoothly.");
+// ---------- Admin approve/decline ----------
+bot.command("approve_withdraw", async (ctx) => {
+  if (!isAdmin(ctx.from.id)) return ctx.reply("❌ You are not authorized.");
+  const parts = (ctx.message.text || "").split(" ").filter(Boolean);
+  const id = parts[1];
+  if (!id) return ctx.reply("Usage: /approve_withdraw <withdrawal_id>");
+  try {
+    const r = await safeQuery("UPDATE withdrawals SET status='paid', processed_at=NOW() WHERE id=$1 AND status='pending' RETURNING *", [id]);
+    if (r.rowCount === 0) return ctx.reply("Withdrawal not found or already processed.");
+    const w = r.rows[0];
+    await safeQuery("INSERT INTO transactions (telegram_id, type, coins, amount, meta) VALUES ($1,'withdraw_paid',$2,$3,$4)", [w.telegram_id, w.coins, w.usd, JSON.stringify({ withdrawalId: id })]);
+    try { await bot.telegram.sendMessage(w.telegram_id, `✅ Your withdrawal #${id} of ${w.coins} coins (~$${w.usd}) has been approved and paid.`); } catch (e) {}
+    return ctx.reply(`✅ Withdrawal ${id} marked as paid.`);
+  } catch (e) {
+    console.error("approve withdraw err", e);
+    return ctx.reply("Error approving withdrawal.");
+  }
 });
 
+bot.command("decline_withdraw", async (ctx) => {
+  if (!isAdmin(ctx.from.id)) return ctx.reply("❌ You are not authorized.");
+  const parts = (ctx.message.text || "").split(" ").filter(Boolean);
+  const id = parts[1];
+  const reason = parts.slice(2).join(" ") || "No reason provided";
+  if (!id) return ctx.reply("Usage: /decline_withdraw <withdrawal_id> <reason>");
+  try {
+    const r = await safeQuery("UPDATE withdrawals SET status='declined', admin_note=$1, processed_at=NOW() WHERE id=$2 AND status='pending' RETURNING *", [reason, id]);
+    if (r.rowCount === 0) return ctx.reply("Withdrawal not found or already processed.");
+    const w = r.rows[0];
+    // refund coins to user
+    await safeQuery("UPDATE users SET coins = coins + $1 WHERE telegram_id=$2", [w.coins, w.telegram_id]);
+    await safeQuery("INSERT INTO transactions (telegram_id, type, coins, meta) VALUES ($1,'withdraw_declined',$2,$3)", [w.telegram_id, w.coins, JSON.stringify({ withdrawalId: id, reason })]);
+    try { await bot.telegram.sendMessage(w.telegram_id, `❌ Your withdrawal #${id} was declined. Reason: ${reason}`); } catch (e) {}
+    return ctx.reply(`✅ Withdrawal ${id} declined and coins refunded to user.`);
+  } catch (e) {
+    console.error("decline withdraw err", e);
+    return ctx.reply("Error declining withdrawal.");
+  }
+});
+
+// ---------- Admin: export withdrawals CSV ----------
+bot.command("export_withdrawals", async (ctx) => {
+  if (!isAdmin(ctx.from.id)) return ctx.reply("❌ You are not authorized.");
+  try {
+    const r = await safeQuery("SELECT * FROM withdrawals ORDER BY requested_at DESC");
+    // build CSV
+    const header = Object.keys(r.rows[0] || {}).join(",");
+    const lines = [header];
+    for (const row of r.rows) lines.push(Object.values(row).join(","));
+    const csv = lines.join("\n");
+    await ctx.replyWithDocument({ source: Buffer.from(csv, "utf8"), filename: "withdrawals.csv" });
+  } catch (e) {
+    console.error("export err", e);
+    await ctx.reply("Error exporting withdrawals.");
+  }
+});
+
+// ---------- Transactions last 7 days for a user ----------
+bot.command("transactions", async (ctx) => {
+  if (!isAdmin(ctx.from.id)) return ctx.reply("❌ You are not authorized.");
+  const parts = (ctx.message.text || "").split(" ").filter(Boolean);
+  const target = parts[1];
+  if (!target) return ctx.reply("Usage: /transactions <telegram_id>");
+  try {
+    const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    const ads = await safeQuery("SELECT * FROM ad_views WHERE telegram_id=$1 AND created_at >= $2 ORDER BY created_at DESC LIMIT 200", [target, since]);
+    const w = await safeQuery("SELECT * FROM withdrawals WHERE telegram_id=$1 AND requested_at >= $2 ORDER BY requested_at DESC LIMIT 50", [target, since]);
+    let msg = `Transactions for ${target} (7 days)\n\nAds watched: ${ads.rowCount}\nWithdrawals: ${w.rowCount}\n\nRecent withdrawals:\n`;
+    for (const row of w.rows) msg += `${row.id} - ${row.status} - ${row.coins} coins - ${row.requested_at}\n`;
+    await ctx.reply(msg);
+  } catch (e) {
+    console.error("transactions err", e);
+    await ctx.reply("Error fetching transactions.");
+  }
+});
+
+// ---------- Invalid text handler: restrict to allowed texts or commands ----------
+bot.on("text", async (ctx) => {
+  const text = (ctx.message.text || "").trim();
+  const isCommand = text.startsWith("/");
+  const allowed = ALLOWED_TEXTS.has(text) || isCommand;
+  if (!allowed) {
+    return ctx.reply("❌ Invalid text. Please use the menu buttons or valid commands. Use /menu to see options.", mainMenuKeyboard());
+  }
+  // otherwise ignore (other handlers earlier may have processed)
+});
+
+// ---------- Express & Health ----------
+app.get("/", (req, res) => res.send("FonPay Task-Earnings Bot is running."));
 app.get("/health", (req, res) => res.send("OK"));
 
-app.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));
+// Start DB, bot, server
+(async () => {
+  await initializeDatabase();
+  app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+  bot.launch().then(() => console.log("Bot launched")).catch((e) => console.error("Bot launch err:", e));
+})();
 
-// ========= START BOT =========
-initializeDatabase();
-bot.launch()
-  .then(() => console.log("🤖 FonPay Task-Earnings Bot started successfully!"))
-  .catch((err) => console.error("Bot launch error:", err));
-
-// ========= SHUTDOWN =========
+// Graceful shutdown
 process.once("SIGINT", () => bot.stop("SIGINT"));
 process.once("SIGTERM", () => bot.stop("SIGTERM"));
+
+                                                                                                                                                                
