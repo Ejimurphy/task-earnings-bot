@@ -1,5 +1,3 @@
-// server.js — Part 1/3
-// Full Task-Earnings Bot (Part 1)
 // Monetag zone: 10136395
 // Admins: 5236441213,5725566044
 
