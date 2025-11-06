@@ -583,12 +583,20 @@ bot.on("text", async (ctx, next) => {
   return next();
 });
 
-// ---------- Get Help ----------
-bot.hears("🆘 Get Help", async (ctx) => {
-  const telegramId = ctx.from.id;
-  await ctx.reply("💬 Please describe your issue. Your message will be forwarded to admin.");
-  // next message from user will be forwarded by the previous on("text") middleware because of next() call.
+// Get Help — show list of help topics as inline buttons
+bot.hears(["🆘 Get Help", "Get Help", "Help"], async (ctx) => {
+  await ctx.reply("🆘 How can we help you? Choose a topic:", {
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: "Account/Wallet issue", callback_data: "help:account" }],
+        [{ text: "Withdrawal problem", callback_data: "help:withdrawal" }],
+        [{ text: "Ads not loading", callback_data: "help:ads" }],
+        [{ text: "Other (message)", callback_data: "help:other" }]
+      ]
+    }
+  });
 });
+
 
 // ---------- Admin: list pending withdrawals ----------
 bot.command("pending_withdrawals", async (ctx) => {
