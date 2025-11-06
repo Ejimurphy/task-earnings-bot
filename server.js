@@ -7,7 +7,6 @@ dotenv.config();
 const app = express();
 app.use(express.json());
 
-
 // ---------- Config ----------
 const BOT_TOKEN = process.env.BOT_TOKEN; // required
 const DATABASE_URL = process.env.DATABASE_URL; // required
