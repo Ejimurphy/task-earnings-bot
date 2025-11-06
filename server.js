@@ -127,90 +127,114 @@ await pool.query(`
 `);
 
       CREATE TABLE IF NOT EXISTS ad_views (
-        id SERIAL PRIMARY KEY,
-        session_id TEXT REFERENCES ad_sessions(id) ON DELETE CASCADE,
-        telegram_id BIGINT,
-        ad_index INT,
-        validated BOOLEAN DEFAULT FALSE,
-        created_at TIMESTAMP DEFAULT NOW()
+import { Pool } from "pg";
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+
+// --- Unified Database Initialization ---
 async function initializeDatabase() {
-  try {
-    await pool.query(`
-      -- Users table
-      CREATE TABLE IF NOT EXISTS users (
-        id SERIAL PRIMARY KEY,
-        telegram_id BIGINT UNIQUE,
-        username TEXT,
-        coins BIGINT DEFAULT 0,
-        balance NUMERIC DEFAULT 0,
-        referred_by BIGINT,
-        referral_credited BOOLEAN DEFAULT FALSE,
-        bank_name TEXT,
-        bank_account_number TEXT,
-        bank_account_name TEXT,
-        is_banned BOOLEAN DEFAULT FALSE,
-        next_task_available_at TIMESTAMP,
-        created_at TIMESTAMP DEFAULT NOW()
-      );
+  await pool.query(`
+    -- 🧍 USERS TABLE
+    CREATE TABLE IF NOT EXISTS users (
+      id SERIAL PRIMARY KEY,
+      telegram_id BIGINT UNIQUE,
+      username TEXT,
+      coins BIGINT DEFAULT 0,
+      balance NUMERIC DEFAULT 0,
+      referred_by BIGINT,
+      referral_credited BOOLEAN DEFAULT FALSE,
+      bank_name TEXT,
+      bank_account_number TEXT,
+      bank_account_name TEXT,
+      is_banned BOOLEAN DEFAULT FALSE,
+      next_task_available_at TIMESTAMP,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
 
-      -- Withdrawals table
-      CREATE TABLE IF NOT EXISTS withdrawals (
-        id SERIAL PRIMARY KEY,
-        user_id BIGINT REFERENCES users(telegram_id),
-        bank_name TEXT,
-        account_name TEXT,
-        account_number TEXT,
-        amount NUMERIC,
-        status TEXT DEFAULT 'pending',
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      );
+    -- 💰 TRANSACTIONS TABLE
+    CREATE TABLE IF NOT EXISTS transactions (
+      id SERIAL PRIMARY KEY,
+      telegram_id BIGINT,
+      amount NUMERIC,
+      type TEXT CHECK (type IN ('credit', 'debit')) DEFAULT 'credit',
+      status TEXT DEFAULT 'pending',
+      description TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
 
-      -- Transactions table (for logs: deposits, tasks, referrals, etc.)
-      CREATE TABLE IF NOT EXISTS transactions (
-        id SERIAL PRIMARY KEY,
-        telegram_id BIGINT REFERENCES users(telegram_id),
-        type TEXT, -- deposit, withdrawal, task_reward, referral_bonus, etc.
-        amount NUMERIC,
-        description TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      );
+    -- 💸 WITHDRAWALS TABLE
+    CREATE TABLE IF NOT EXISTS withdrawals (
+      id SERIAL PRIMARY KEY,
+      telegram_id BIGINT,
+      amount NUMERIC,
+      bank_name TEXT,
+      account_number TEXT,
+      account_name TEXT,
+      status TEXT DEFAULT 'pending',
+      processed_by BIGINT,
+      processed_at TIMESTAMP,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
 
-      -- Ad sessions (for current ad progress tracking)
-      CREATE TABLE IF NOT EXISTS ad_sessions (
-        id UUID PRIMARY KEY,
-        telegram_id BIGINT REFERENCES users(telegram_id),
-        ad_count INT DEFAULT 0,
-        completed BOOLEAN DEFAULT FALSE,
-        last_watch TIMESTAMP DEFAULT NOW(),
-        expires_at TIMESTAMP
-      );
+    -- 👥 REFERRALS TABLE
+    CREATE TABLE IF NOT EXISTS referrals (
+      id SERIAL PRIMARY KEY,
+      referrer_id BIGINT,
+      referred_id BIGINT UNIQUE,
+      reward NUMERIC DEFAULT 0,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
 
-      -- Ad views (legacy or extended tracking for total ads watched)
-      CREATE TABLE IF NOT EXISTS ad_views (
-        id SERIAL PRIMARY KEY,
-        user_id BIGINT REFERENCES users(telegram_id),
-        ad_count INT DEFAULT 0,
-        completed BOOLEAN DEFAULT FALSE,
-        last_watch TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      );
+    -- 🎬 AD SESSIONS TABLE
+    CREATE TABLE IF NOT EXISTS ad_sessions (
+      id UUID PRIMARY KEY,
+      telegram_id BIGINT,
+      completed BOOLEAN DEFAULT FALSE,
+      progress INTEGER DEFAULT 0,
+      expires_at TIMESTAMP,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
 
-      -- Support requests (for get help / complaints)
-      CREATE TABLE IF NOT EXISTS support_requests (
-        id SERIAL PRIMARY KEY,
-        telegram_id BIGINT REFERENCES users(telegram_id),
-        help_topic TEXT,
-        message TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      );
-    `);
+    -- 👁️ AD VIEWS TABLE
+    CREATE TABLE IF NOT EXISTS ad_views (
+      id SERIAL PRIMARY KEY,
+      session_id UUID REFERENCES ad_sessions(id) ON DELETE CASCADE,
+      telegram_id BIGINT,
+      viewed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
 
-    console.log("✅ Database initialized successfully with all tables");
-  } catch (error) {
-    console.error("❌ Database initialization failed:", error);
-  }
+    -- 🆘 SUPPORT REQUESTS TABLE
+    CREATE TABLE IF NOT EXISTS support_requests (
+      id SERIAL PRIMARY KEY,
+      telegram_id BIGINT,
+      help_topic TEXT,
+      message TEXT,
+      status TEXT DEFAULT 'pending',
+      admin_reply TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    -- ⚙️ SETTINGS TABLE
+    CREATE TABLE IF NOT EXISTS settings (
+      key TEXT PRIMARY KEY,
+      value TEXT,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    -- 🪙 REWARD LOG TABLE (to track ad task rewards)
+    CREATE TABLE IF NOT EXISTS reward_logs (
+      id SERIAL PRIMARY KEY,
+      telegram_id BIGINT,
+      task_id UUID,
+      reward_amount NUMERIC DEFAULT 0,
+      credited BOOLEAN DEFAULT FALSE,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+
+  console.log("✅ All database tables created successfully!");
 }
 
-const bot = new Telegraf(BOT_TOKEN);
+await initializeDatabase();
 
 // ---------- Utilities ----------
 function isAdmin(telegramId) {
