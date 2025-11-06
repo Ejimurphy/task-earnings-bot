@@ -307,25 +307,121 @@ bot.hears(["🎥 Perform Task", "Perform Task", "Watch Ads", "Start Task"], asyn
 });
 
 
-// ---------- Ad session page (serves Monetag SDK + progress) ----------
 app.get("/ad-session/:sessionId", async (req, res) => {
   const { sessionId } = req.params;
-  // simple html that loads Monetag SDK and polls /api/session/:id/status
-  res.send(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Ad Session</title></head><body style="font-family: system-ui; padding:20px;"><h3>Watch Ads — Session</h3><p id="status">Loading...</p><div id="progress" style="font-size:22px; margin:12px 0;"></div><button id="openAd">Open Ad</button><script src='//libtl.com/sdk.js' data-zone='${MONETAG_ZONE}' data-sdk='show_${MONETAG_ZONE}'></script><script>const sessionId='${sessionId}';async function refresh(){try{const r=await fetch('/api/session/'+sessionId+'/status');const j=await r.json();const count=j.count||0;document.getElementById('progress').innerText='🔵'.repeat(count)+'⚪'.repeat(Math.max(0,10-count))+' ('+count+'/10)';document.getElementById('status').innerText=count>=10?'Completed — return to Telegram and Submit':'Watch ads and come back to submit when done';}catch(e){document.getElementById('status').innerText='Error fetching progress';}};document.getElementById('openAd').addEventListener('click',function(){try{show_${MONETAG_ZONE}({type:'inApp',inAppSettings:{frequency:2,capping:0.1,interval:30,timeout:5,everyPage:false},custom:'sessionId='+sessionId});}catch(e){alert('Ad SDK error:'+e);}});setInterval(refresh,3000);refresh();</script></body></html>`);
+  try {
+    // check count and last validated timestamp
+    const lastRow = await safeQuery(
+      `SELECT COUNT(*)::int AS cnt, MAX(created_at) AS last_valid
+       FROM ad_views WHERE session_id=$1 AND validated=true`,
+      [sessionId]
+    );
+    const cnt = Number(lastRow.rows[0]?.cnt || 0);
+    const lastValid = lastRow.rows[0]?.last_valid ? new Date(lastRow.rows[0].last_valid) : null;
+    const now = new Date();
+
+    // if lastValid exists and more than 2 minutes ago -> reset session ad_views
+    if (lastValid && (now - lastValid) > 2 * 60 * 1000) {
+      // delete previous ad_views for this session
+      try {
+        await safeQuery("DELETE FROM ad_views WHERE session_id=$1", [sessionId]);
+        await safeQuery("UPDATE ad_sessions SET completed=false WHERE id=$1", [sessionId]);
+      } catch (e) {
+        console.error("reset session err", e);
+      }
+    }
+
+    // get updated count after possible reset
+    const updatedRow = await safeQuery(
+      `SELECT COUNT(*)::int AS cnt FROM ad_views WHERE session_id=$1 AND validated=true`,
+      [sessionId]
+    );
+    const updatedCount = Number(updatedRow.rows[0]?.cnt || 0);
+
+    // Serve a simple card-style HTML page with SDK, progress and an "Open Ad" button
+    res.send(`<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Ad Session</title>
+  <style>
+    body { font-family: system-ui, Roboto, Arial; background:#f4f6fb; padding:20px; }
+    .card { max-width:720px; margin:0 auto; background:#fff; border-radius:12px; box-shadow:0 6px 20px rgba(20,20,50,0.08); padding:20px; }
+    .title { font-size:20px; margin-bottom:6px; }
+    .progress { font-size:18px; margin:14px 0; }
+    .btn { display:inline-block; padding:10px 14px; border-radius:10px; text-decoration:none; background:#2563eb; color:#fff; font-weight:600; }
+    .note { color:#6b7280; font-size:13px; margin-top:12px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="title">🎬 Watch Ads — Session</div>
+    <div id="progress" class="progress">Progress: ${updatedCount}/10</div>
+    <div>
+      <button id="openAd" class="btn">▶️ Open Ad</button>
+      <button id="refreshBtn" class="btn" style="background:#10b981; margin-left:8px;">🔄 Refresh</button>
+    </div>
+    <div class="note" id="noteArea">Close this page and re-open within 2 minutes to resume progress. After 2 minutes of inactivity the progress resets.</div>
+  </div>
+
+  <script src='//libtl.com/sdk.js' data-zone='${MONETAG_ZONE}' data-sdk='show_${MONETAG_ZONE}'></script>
+  <script>
+    const sessionId = '${sessionId}';
+    async function refresh() {
+      try {
+        const r = await fetch('/api/session/' + sessionId + '/status');
+        const j = await r.json();
+        document.getElementById('progress').innerText = 'Progress: ' + (j.count || 0) + '/10';
+        document.getElementById('noteArea').innerText = j.count >= 10 ? 'Completed — return to Telegram and submit the session.' : 'Close this page and re-open within 2 minutes to resume progress. After 2 minutes of inactivity the progress resets.';
+      } catch (e) {
+        document.getElementById('noteArea').innerText = 'Error getting progress';
+      }
+    }
+
+    document.getElementById('openAd').addEventListener('click', function() {
+      try {
+        // call Monetag SDK to show an ad; include sessionId in custom for server-side validation
+        show_${MONETAG_ZONE}({
+          type: 'inApp',
+          inAppSettings: { frequency:2, capping:0.1, interval:30, timeout:5, everyPage:false },
+          custom: 'sessionId=' + sessionId
+        });
+      } catch (e) {
+        alert('Ad SDK error: ' + e);
+      }
+    });
+
+    document.getElementById('refreshBtn').addEventListener('click', refresh);
+    setInterval(refresh, 3000);
+    refresh();
+  </script>
+</body>
+</html>`);
+  } catch (e) {
+    console.error("ad-session page error", e);
+    res.status(500).send("Session error");
+  }
 });
 
 // ---------- Session status endpoint ----------
 app.get("/api/session/:sessionId/status", async (req, res) => {
   const { sessionId } = req.params;
   try {
-    const r = await safeQuery("SELECT COUNT(*) as c FROM ad_views WHERE session_id=$1 AND validated=true", [sessionId]);
-    const cnt = Number(r.rows[0].c || 0);
-    res.json({ count: cnt });
+    const r = await safeQuery(
+      `SELECT COUNT(*)::int AS c, MAX(created_at) AS last_valid
+       FROM ad_views WHERE session_id=$1 AND validated=true`,
+      [sessionId]
+    );
+    const cnt = Number(r.rows[0]?.c || 0);
+    const lastValid = r.rows[0]?.last_valid ? new Date(r.rows[0].last_valid).toISOString() : null;
+    res.json({ count: cnt, last_valid: lastValid });
   } catch (e) {
     console.error("session status err", e);
-    res.json({ count: 0 });
+    res.json({ count: 0, last_valid: null });
   }
 });
+
 
 // ---------- Monetag server-side postback (validate ad events) ----------
 app.post("/api/monetag/postback", express.json(), async (req, res) => {
