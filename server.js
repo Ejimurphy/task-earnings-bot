@@ -91,13 +91,14 @@ async function initializeDatabase() {
 
     -- 🎬 AD SESSIONS TABLE
     CREATE TABLE IF NOT EXISTS ad_sessions (
-      id UUID PRIMARY KEY,
-      telegram_id BIGINT,
-      completed BOOLEAN DEFAULT FALSE,
-      progress INTEGER DEFAULT 0,
-      expires_at TIMESTAMP,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    );
+    id UUID PRIMARY KEY,
+    telegram_id BIGINT REFERENCES users(telegram_id),
+    completed BOOLEAN DEFAULT FALSE,
+    progress INT DEFAULT 0,
+    last_view_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  );
+`);
 
     -- 👁️ AD VIEWS TABLE
     CREATE TABLE IF NOT EXISTS ad_views (
