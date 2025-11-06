@@ -34,12 +34,8 @@ if (!DATABASE_URL) {
   process.exit(1);
 }
 
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false },
-});
-
 // --- Unified Database Initialization ---
+import pool from "./src/db.js";
 async function initializeDatabase() {
   const sql = `
     -- 🧍 USERS TABLE
