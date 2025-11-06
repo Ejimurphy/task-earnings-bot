@@ -35,7 +35,6 @@ if (!DATABASE_URL) {
   process.exit(1);
 }
 
-      referral_credited BOOLEAN DEFAULT FALSE,
 import { Pool } from "pg";
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
