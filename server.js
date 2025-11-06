@@ -557,6 +557,25 @@ bot.on("text", async (ctx, next) => {
       return ctx.reply("⚠️ Error saving bank details.");
     }
   }
+
+  // ---------- Refer & Earn ----------
+bot.hears(["👥 Refer & Earn", "Refer & Earn", "Refer and Earn"], async (ctx) => {
+  const telegramId = ctx.from.id;
+  const referralLink = `https://t.me/${ctx.botInfo.username}?start=${telegramId}`;
+
+  await ctx.reply(
+    `👥 *Refer & Earn!*\n\nShare your referral link:\n${referralLink}\n\nYou earn 50 coins for every friend who registers and completes at least one task!`,
+    { parse_mode: "Markdown" }
+  );
+});
+
+// ---------- Change Bank ----------
+bot.hears(["🏦 Change Bank", "Change Bank"], async (ctx) => {
+  const telegramId = ctx.from.id;
+
+  await ctx.reply(
+    "🏦 To change your bank account, please send
+
   // ---------- Change bank flow: old|new format ----------
   if (text.includes("|") && text.split("|").length === 2 && text.split("|")[0].includes(",") && text.split("|")[1].includes(",")) {
     // oldBank,oldAcc,oldName|newBank,newAcc,newName
