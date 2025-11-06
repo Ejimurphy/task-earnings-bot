@@ -713,6 +713,19 @@ bot.hears("💳 Withdraw", ...)
 bot.hears("💬 Get Help", ...)
 etc...
 */
+bot.command("admin", async (ctx) => {
+  const telegramId = String(ctx.from.id);
+  if (!ADMIN_IDS.includes(telegramId)) return ctx.reply("❌ You are not authorized.");
+  await ctx.reply("Admin panel:", {
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: "View Pending Withdrawals", callback_data: "admin:pending_withdrawals" }],
+        [{ text: "Export Withdrawals", callback_data: "admin:export_withdrawals" }],
+        [{ text: "View Recent Users", callback_data: "admin:recent_users" }]
+      ]
+    }
+  });
+});
 
 bot.on("callback_query", async (ctx) => {
   const data = ctx.callbackQuery.data || "";
