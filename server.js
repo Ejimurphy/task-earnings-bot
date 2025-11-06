@@ -115,12 +115,16 @@ await pool.query(`
 `);
 
 
-      CREATE TABLE IF NOT EXISTS ad_sessions (
-        id TEXT PRIMARY KEY,
-        telegram_id BIGINT,
-        completed BOOLEAN DEFAULT FALSE,
-        created_at TIMESTAMP DEFAULT NOW()
-      );
+      await pool.query(`
+  CREATE TABLE IF NOT EXISTS ad_sessions (
+    id UUID PRIMARY KEY,
+    telegram_id BIGINT REFERENCES users(telegram_id),
+    ad_count INT DEFAULT 0,
+    completed BOOLEAN DEFAULT FALSE,
+    last_watch TIMESTAMP DEFAULT NOW(),
+    expires_at TIMESTAMP
+  );
+`);
 
       CREATE TABLE IF NOT EXISTS ad_views (
         id SERIAL PRIMARY KEY,
