@@ -1,6 +1,5 @@
 // ==========================
-// Task Earnings Bot - Server
-// Stable Build (No Syntax Error)
+// Task Earnings Bot - Server (Stable Final)
 // Admins: 5236441213, 5725566044
 // Monetag Zone: 10136395
 // ==========================
@@ -75,6 +74,7 @@ const bot = new Telegraf(BOT_TOKEN);
 bot.start(async (ctx) => {
   const telegramId = ctx.from.id;
   const username = ctx.from.username || "Unknown";
+  const refId = ctx.startPayload ? Number(ctx.startPayload) : null;
 
   try {
     const user = await pool.query("SELECT * FROM users WHERE telegram_id=$1", [
@@ -83,11 +83,16 @@ bot.start(async (ctx) => {
 
     if (user.rows.length === 0) {
       await pool.query(
-        "INSERT INTO users (telegram_id, username) VALUES ($1,$2)",
-        [telegramId, username]
+        "INSERT INTO users (telegram_id, username, referred_by) VALUES ($1,$2,$3)",
+        [telegramId, username, refId]
       );
+
+      if (refId) {
+        await pool.query("UPDATE users SET coins = coins + 100 WHERE telegram_id=$1", [refId]);
+      }
+
       await ctx.reply(
-        `🎉 Welcome, ${username}! Your FonPay Task account is ready.\n\nUse /menu to view available options.`
+        `🎉 Welcome, ${username}!\nYour FonPay Task account is ready.\n\nUse /menu to view options.`
       );
     } else {
       await ctx.reply(`👋 Welcome back, ${username}! Use /menu to continue.`);
@@ -149,7 +154,7 @@ bot.hears("🎥 Perform Task", async (ctx) => {
     const count = rows.length ? rows[0].ad_count : 0;
 
     await ctx.reply(
-      `🎬 *Task Started!*\n\nProgress: ${count}/10 ads watched.\n\nWatch ads here 👇\n<script src='//libtl.com/sdk.js' data-zone='${MONETAG_ZONE}' data-sdk='show_${MONETAG_ZONE}'></script>\n\nAfter all 10 ads, type *Done* to claim reward.`,
+      `🎬 *Task Started!*\nProgress: ${count}/10 ads watched.\n\nClick below to watch ads 👇\nhttps://fonpay.digital/ads?zone=${MONETAG_ZONE}\n\nAfter all 10 ads, type *Done* to claim reward.`,
       { parse_mode: "Markdown" }
     );
   } catch (e) {
@@ -158,33 +163,39 @@ bot.hears("🎥 Perform Task", async (ctx) => {
   }
 });
 
-// ========= UNKNOWN TEXT HANDLER =========
-bot.on("text", async (ctx) => {
-  const text = ctx.message.text.trim();
+// ========= REFERRAL =========
+bot.hears("👥 Refer & Earn", async (ctx) => {
+  const id = ctx.from.id;
+  const link = `https://t.me/${ctx.botInfo.username}?start=${id}`;
+  await ctx.reply(
+    `👥 *Refer & Earn*\n\nShare your referral link:\n${link}\n\nEarn 100 coins for each referral who joins!`,
+    { parse_mode: "Markdown" }
+  );
+});
 
-  // If the message matches none of the commands or buttons
-  if (!text.startsWith("/")) {
-    await ctx.reply(
-      "🤖 I didn’t understand that. Please choose an option below:",
-      {
-        reply_markup: {
-          keyboard: [
-            ["🎥 Perform Task", "💰 My Balance"],
-            ["👥 Refer & Earn", "💸 Withdraw"],
-            ["🏦 Change Bank", "🆘 Get Help"],
-          ],
-          resize_keyboard: true,
-        },
-      }
+// ========= WITHDRAWAL =========
+bot.hears("💸 Withdraw", async (ctx) => {
+  const telegramId = ctx.from.id;
+  try {
+    const res = await pool.query("SELECT balance FROM users WHERE telegram_id=$1", [telegramId]);
+    if (res.rows.length === 0) return ctx.reply("⚠️ No wallet found.");
+    const { balance } = res.rows[0];
+    if (balance < 500) return ctx.reply("❌ Minimum withdrawal is ₦500.");
+    await pool.query(
+      "INSERT INTO withdrawals (user_id, amount) VALUES ($1,$2)",
+      [telegramId, balance]
     );
+    await pool.query("UPDATE users SET balance=0 WHERE telegram_id=$1", [telegramId]);
+    await ctx.reply("✅ Withdrawal request submitted. Admin will review shortly.");
+  } catch (err) {
+    console.error(err);
+    await ctx.reply("⚠️ Error processing withdrawal.");
   }
 });
 
 // ========= ADMIN COMMANDS =========
-
-// View all users
 bot.command("view_users", async (ctx) => {
-  if (!ADMIN_IDS.includes(ctx.from.id)) return;
+  if (!ADMIN_IDS.includes(String(ctx.from.id))) return;
   try {
     const res = await pool.query(
       "SELECT telegram_id, username, balance FROM users ORDER BY id DESC"
@@ -201,9 +212,8 @@ bot.command("view_users", async (ctx) => {
   }
 });
 
-// Platform stats
 bot.command("stats", async (ctx) => {
-  if (!ADMIN_IDS.includes(ctx.from.id)) return;
+  if (!ADMIN_IDS.includes(String(ctx.from.id))) return;
   try {
     const users = await pool.query("SELECT COUNT(*) FROM users");
     const withdrawals = await pool.query("SELECT COUNT(*) FROM withdrawals");
@@ -212,7 +222,7 @@ bot.command("stats", async (ctx) => {
     );
 
     await ctx.reply(
-      `📊 *FonPay Bot Stats*\n\n👥 Users: ${users.rows[0].count}\n💸 Withdrawals: ${withdrawals.rows[0].count}\n🕒 Pending: ${pending.rows[0].count}`,
+      `📊 *FonPay Bot Stats*\n👥 Users: ${users.rows[0].count}\n💸 Withdrawals: ${withdrawals.rows[0].count}\n🕒 Pending: ${pending.rows[0].count}`,
       { parse_mode: "Markdown" }
     );
   } catch (err) {
@@ -221,14 +231,10 @@ bot.command("stats", async (ctx) => {
   }
 });
 
-// Broadcast message
 bot.command("broadcast", async (ctx) => {
-  if (!ADMIN_IDS.includes(ctx.from.id)) return;
-  const parts = ctx.message.text.split(" ");
-  parts.shift();
-  const message = parts.join(" ");
+  if (!ADMIN_IDS.includes(String(ctx.from.id))) return;
+  const message = ctx.message.text.split(" ").slice(1).join(" ");
   if (!message) return ctx.reply("Usage: /broadcast your_message");
-
   try {
     const res = await pool.query("SELECT telegram_id FROM users");
     for (const row of res.rows) {
@@ -246,20 +252,16 @@ app.get("/", (req, res) => {
   res.send("✅ FonPay Task-Earnings Bot is running smoothly.");
 });
 
-// Health check endpoint (Render requirement)
 app.get("/health", (req, res) => res.send("OK"));
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`✅ Server running on port ${PORT}`);
-});
+app.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));
 
 // ========= START BOT =========
+initializeDatabase();
 bot.launch()
   .then(() => console.log("🤖 FonPay Task-Earnings Bot started successfully!"))
   .catch((err) => console.error("Bot launch error:", err));
 
-// Graceful shutdown
+// ========= SHUTDOWN =========
 process.once("SIGINT", () => bot.stop("SIGINT"));
 process.once("SIGTERM", () => bot.stop("SIGTERM"));
-            
