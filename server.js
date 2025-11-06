@@ -133,35 +133,80 @@ await pool.query(`
         ad_index INT,
         validated BOOLEAN DEFAULT FALSE,
         created_at TIMESTAMP DEFAULT NOW()
+async function initializeDatabase() {
+  try {
+    await pool.query(`
+      -- Users table
+      CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
+        telegram_id BIGINT UNIQUE,
+        username TEXT,
+        coins BIGINT DEFAULT 0,
+        balance NUMERIC DEFAULT 0,
+        referred_by BIGINT,
+        referral_credited BOOLEAN DEFAULT FALSE,
+        bank_name TEXT,
+        bank_account_number TEXT,
+        bank_account_name TEXT,
+        is_banned BOOLEAN DEFAULT FALSE,
+        next_task_available_at TIMESTAMP,
+        created_at TIMESTAMP DEFAULT NOW()
       );
 
+      -- Withdrawals table
       CREATE TABLE IF NOT EXISTS withdrawals (
         id SERIAL PRIMARY KEY,
-        telegram_id BIGINT,
-        coins BIGINT,
-        usd NUMERIC,
+        user_id BIGINT REFERENCES users(telegram_id),
         bank_name TEXT,
         account_name TEXT,
         account_number TEXT,
+        amount NUMERIC,
         status TEXT DEFAULT 'pending',
-        admin_note TEXT,
-        requested_at TIMESTAMP DEFAULT NOW(),
-        processed_at TIMESTAMP
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
 
+      -- Transactions table (for logs: deposits, tasks, referrals, etc.)
       CREATE TABLE IF NOT EXISTS transactions (
         id SERIAL PRIMARY KEY,
-        telegram_id BIGINT,
-        type TEXT,
-        coins BIGINT DEFAULT 0,
-        amount NUMERIC DEFAULT 0,
-        meta JSONB,
-        created_at TIMESTAMP DEFAULT NOW()
+        telegram_id BIGINT REFERENCES users(telegram_id),
+        type TEXT, -- deposit, withdrawal, task_reward, referral_bonus, etc.
+        amount NUMERIC,
+        description TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- Ad sessions (for current ad progress tracking)
+      CREATE TABLE IF NOT EXISTS ad_sessions (
+        id UUID PRIMARY KEY,
+        telegram_id BIGINT REFERENCES users(telegram_id),
+        ad_count INT DEFAULT 0,
+        completed BOOLEAN DEFAULT FALSE,
+        last_watch TIMESTAMP DEFAULT NOW(),
+        expires_at TIMESTAMP
+      );
+
+      -- Ad views (legacy or extended tracking for total ads watched)
+      CREATE TABLE IF NOT EXISTS ad_views (
+        id SERIAL PRIMARY KEY,
+        user_id BIGINT REFERENCES users(telegram_id),
+        ad_count INT DEFAULT 0,
+        completed BOOLEAN DEFAULT FALSE,
+        last_watch TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- Support requests (for get help / complaints)
+      CREATE TABLE IF NOT EXISTS support_requests (
+        id SERIAL PRIMARY KEY,
+        telegram_id BIGINT REFERENCES users(telegram_id),
+        help_topic TEXT,
+        message TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
-    console.log("✅ Database initialized");
-  } catch (e) {
-    console.error("DB init error:", e);
+
+    console.log("✅ Database initialized successfully with all tables");
+  } catch (error) {
+    console.error("❌ Database initialization failed:", error);
   }
 }
 
