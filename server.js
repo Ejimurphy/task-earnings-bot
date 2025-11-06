@@ -3,7 +3,6 @@
 
 import express from "express";
 import { Telegraf, Markup } from "telegraf";
-import pkg from "pg";
 import dotenv from "dotenv";
 import crypto from "crypto";
 
