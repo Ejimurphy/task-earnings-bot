@@ -242,8 +242,6 @@ bot.command("broadcast", async (ctx) => {
 });
 
 // ========= EXPRESS SERVER =========
-const app = express();
-
 app.get("/", (req, res) => {
   res.send("✅ FonPay Task-Earnings Bot is running smoothly.");
 });
