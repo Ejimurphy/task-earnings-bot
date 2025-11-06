@@ -48,20 +48,20 @@ async function initializeDatabase() {
   try {
     await pool.query(`
       CREATE TABLE IF NOT EXISTS users (
-        id SERIAL PRIMARY KEY,
-        telegram_id BIGINT UNIQUE,
-        username TEXT,
-        coins BIGINT DEFAULT 0,
-        balance NUMERIC DEFAULT 0,
-        referred_by BIGINT,
-        referral_credited BOOLEAN DEFAULT FALSE,
-        bank_name TEXT,
-        bank_account_number TEXT,
-        bank_account_name TEXT,
-        is_banned BOOLEAN DEFAULT FALSE,
-        next_task_available_at TIMESTAMP,
-        created_at TIMESTAMP DEFAULT NOW()
-      );
+  id SERIAL PRIMARY KEY,
+  telegram_id BIGINT UNIQUE,
+  username TEXT,
+  coins BIGINT DEFAULT 0,
+  balance NUMERIC DEFAULT 0,
+  referred_by BIGINT,
+  referral_credited BOOLEAN DEFAULT FALSE,
+  bank_name TEXT,
+  bank_account_number TEXT,
+  bank_account_name TEXT,
+  is_banned BOOLEAN DEFAULT FALSE,
+  next_task_available_at TIMESTAMP,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 
       CREATE TABLE IF NOT EXISTS ad_sessions (
         id TEXT PRIMARY KEY,
