@@ -1,13 +1,12 @@
-// Monetag zone: 10136395
-// Admins: 5236441213,5725566044
-
 import express from "express";
-import { Telegraf, Markup } from "telegraf";
 import dotenv from "dotenv";
-import crypto from "crypto";
+import pool from "./src/db.js"; // ✅ import the Pool connection from db.js
 
 dotenv.config();
-const { Pool } = pkg;
+
+const app = express();
+app.use(express.json());
+
 
 // ---------- Config ----------
 const BOT_TOKEN = process.env.BOT_TOKEN; // required
