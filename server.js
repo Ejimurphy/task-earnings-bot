@@ -706,6 +706,58 @@ bot.on("text", async (ctx) => {
 app.get("/", (req, res) => res.send("FonPay Task-Earnings Bot is running."));
 app.get("/health", (req, res) => res.send("OK"));
 
+// ... earlier handlers like:
+/*
+bot.hears("🎥 Perform Task", ...)
+bot.hears("💳 Withdraw", ...)
+bot.hears("💬 Get Help", ...)
+etc...
+*/
+
+bot.on("callback_query", async (ctx) => {
+  const data = ctx.callbackQuery.data || "";
+  const fromId = ctx.from.id;
+  try {
+    if (data.startsWith("help:")) {
+      const topic = data.split(":")[1] || "other";
+      // Save request to DB
+      await safeQuery(
+        "INSERT INTO support_requests (telegram_id, help_topic, message) VALUES ($1,$2,$3)",
+        [fromId, topic, "User selected quick help topic: " + topic]
+      );
+
+      // Notify admins
+      for (const aid of ADMIN_IDS) {
+        try {
+          await bot.telegram.sendMessage(
+            aid,
+            `🆘 Support request\nUser: ${fromId}\nTopic: ${topic}\nUse /startchat ${fromId} to begin chat.`
+          );
+        } catch (e) {}
+      }
+
+      // Acknowledge user
+      await ctx.answerCbQuery(); // remove loader
+      await ctx.reply(
+        "✅ Complaint received. An agent will get back to you shortly. You can also contact us on WhatsApp if urgent."
+      );
+      return;
+    }
+
+    // Handle refresh buttons etc
+    if (data.startsWith("refresh:")) {
+      const sessionId = data.split(":")[1];
+      await ctx.answerCbQuery("Progress refreshed — open session page to see updates.");
+      return;
+    }
+  } catch (e) {
+    console.error("callback err", e);
+    try {
+      await ctx.answerCbQuery("Error processing your request");
+    } catch (e2) {}
+  }
+});
+
 // Start DB, bot, server
 (async () => {
   await initializeDatabase();
