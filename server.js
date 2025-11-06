@@ -6,6 +6,7 @@ dotenv.config();
 
 const app = express();
 app.use(express.json());
+const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
 
 // ---------- Config ----------
 const BOT_TOKEN = process.env.BOT_TOKEN; // required
