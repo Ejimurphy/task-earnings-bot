@@ -267,33 +267,45 @@ bot.hears("💼 Wallet Balance", async (ctx) => {
   }
 });
 
-// ---------- Perform Task: create ad_session and provide link ----------
-bot.hears("🎥 Perform Task", async (ctx) => {
+// Perform Task — create session and send a card-like message with inline "Open Ads" button
+bot.hears(["🎥 Perform Task", "Perform Task", "Watch Ads", "Start Task"], async (ctx) => {
   const telegramId = ctx.from.id;
   try {
-    // Check ban
+    // check ban
     const u = await safeQuery("SELECT is_banned FROM users WHERE telegram_id=$1", [telegramId]);
-    if (u.rows[0] && u.rows[0].is_banned) return ctx.reply("🚫 Your account is banned.");
+    if (u.rows[0] && u.rows[0].is_banned) return ctx.reply("🚫 Your account is banned. Contact support.");
 
-    // create ad_session
+    // create or reuse a session: create fresh sessionId
     const sessionId = crypto.randomUUID();
     await safeQuery("INSERT INTO ad_sessions (id, telegram_id, completed) VALUES ($1,$2,false)", [
       sessionId,
       telegramId,
     ]);
 
-    // ad-session URL on this server
-    const sessionUrl = `${process.env.BASE_URL || `https://your-app-url.example`}/ad-session/${sessionId}`;
-    // for safety send both link and the monetag main url
-    await ctx.reply(
-      `🎬 Task session created (session: ${sessionId}).\nProgress: 0/10\n\nOpen this link to watch ads and track progress:\n${sessionUrl}\n\nIf the page doesn't open, watch at https://www.monetag.com/?zone=${MONETAG_ZONE}`,
-      { parse_mode: "Markdown" }
-    );
+    // session URL (uses BASE_URL env if set)
+    const base = process.env.BASE_URL || `https://${process.env.RENDER_EXTERNAL_URL || process.env.HOSTNAME || "your-app-url.example"}`;
+    const sessionUrl = `${base.replace(/\/$/, "")}/ad-session/${sessionId}`;
+
+    // Send a card-style message via Markdown + inline keyboard
+    const msg = `🎬 *Task Created*\nSession: \`${sessionId}\`\nProgress: 0/10\n\nOpen the session below to watch ads and track progress.`;
+
+    await ctx.reply(msg, {
+      parse_mode: "Markdown",
+      reply_markup: {
+        inline_keyboard: [
+          [
+            { text: "▶️ Open Ads", url: sessionUrl },
+            { text: "🔁 Refresh Progress", callback_data: `refresh:${sessionId}` }
+          ]
+        ]
+      }
+    });
   } catch (e) {
     console.error("perform task error", e);
-    await ctx.reply("⚠️ Error creating task session.");
+    await ctx.reply("❌ error creating task session");
   }
 });
+
 
 // ---------- Ad session page (serves Monetag SDK + progress) ----------
 app.get("/ad-session/:sessionId", async (req, res) => {
