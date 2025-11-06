@@ -34,8 +34,10 @@ if (!DATABASE_URL) {
   process.exit(1);
 }
 
-import { Pool } from "pg";
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false },
+});
 
 // --- Unified Database Initialization ---
 async function initializeDatabase() {
