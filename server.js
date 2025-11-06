@@ -46,22 +46,74 @@ const pool = new Pool({
 
 async function initializeDatabase() {
   try {
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS users (
-  id SERIAL PRIMARY KEY,
-  telegram_id BIGINT UNIQUE,
-  username TEXT,
-  coins BIGINT DEFAULT 0,
-  balance NUMERIC DEFAULT 0,
-  referred_by BIGINT,
-  referral_credited BOOLEAN DEFAULT FALSE,
-  bank_name TEXT,
-  bank_account_number TEXT,
-  bank_account_name TEXT,
-  is_banned BOOLEAN DEFAULT FALSE,
-  next_task_available_at TIMESTAMP,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
+await pool.query(`
+  CREATE TABLE IF NOT EXISTS users (
+    id SERIAL PRIMARY KEY,
+    telegram_id BIGINT UNIQUE,
+    username TEXT,
+    coins BIGINT DEFAULT 0,
+    balance NUMERIC DEFAULT 0,
+    referred_by BIGINT,
+    referral_credited BOOLEAN DEFAULT FALSE,
+    bank_name TEXT,
+    bank_account_number TEXT,
+    bank_account_name TEXT,
+    is_banned BOOLEAN DEFAULT FALSE,
+    next_task_available_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS ad_sessions (
+    id TEXT PRIMARY KEY,
+    telegram_id BIGINT,
+    completed BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS ad_views (
+    id SERIAL PRIMARY KEY,
+    session_id TEXT REFERENCES ad_sessions(id) ON DELETE CASCADE,
+    telegram_id BIGINT,
+    ad_index INT,
+    validated BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS withdrawals (
+    id SERIAL PRIMARY KEY,
+    telegram_id BIGINT,
+    coins BIGINT,
+    usd NUMERIC,
+    bank_name TEXT,
+    account_name TEXT,
+    account_number TEXT,
+    status TEXT DEFAULT 'pending',
+    admin_note TEXT,
+    requested_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    processed_at TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS transactions (
+    id SERIAL PRIMARY KEY,
+    telegram_id BIGINT,
+    type TEXT,
+    coins BIGINT DEFAULT 0,
+    amount NUMERIC DEFAULT 0,
+    meta JSONB,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  );
+
+  -- support requests table (simple)
+  CREATE TABLE IF NOT EXISTS support_requests (
+    id SERIAL PRIMARY KEY,
+    telegram_id BIGINT,
+    help_topic TEXT,
+    message TEXT,
+    status TEXT DEFAULT 'open',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  );
+`);
+
 
       CREATE TABLE IF NOT EXISTS ad_sessions (
         id TEXT PRIMARY KEY,
