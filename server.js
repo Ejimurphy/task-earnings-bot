@@ -98,7 +98,6 @@ async function initializeDatabase() {
     last_view_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
   );
-`);
 
     -- 👁️ AD VIEWS TABLE
     CREATE TABLE IF NOT EXISTS ad_views (
