@@ -609,21 +609,22 @@ bot.hears("🆘 Get Help", async (ctx) => {
 // ---------- Help Category Handlers ----------
 bot.hears(["💵 Withdraw Issue", "🧩 Task Issue", "💳 Bank/Account Issue"], async (ctx) => {
   const topic = ctx.message.text;
-  await ctx.reply(
-    `✅ You selected *${topic}*\nPlease describe your issue briefly, and an admin will assist you shortly.`,
-    { parse_mode: "Markdown" }
-  );
-  await ctx.reply("Type your message now 👇");
   ctx.session = ctx.session || {};
   ctx.session.awaitingHelpMessage = topic;
+
+  await ctx.reply(
+    `✅ You selected *${topic}*\nPlease describe your issue briefly below 👇`,
+    { parse_mode: "Markdown" }
+  );
 });
 
 // ---------- Other / Chat with Admin ----------
 bot.hears("🗣 Other", async (ctx) => {
   ctx.session = ctx.session || {};
   ctx.session.awaitingHelpMessage = "Other";
+
   await ctx.reply(
-    "✍️ Please type your message for the admin.\nOur support team will respond shortly."
+    "✍️ Please type your message for the admin.\n💬 Our support team will respond shortly after receiving it."
   );
 });
 
@@ -655,7 +656,10 @@ bot.on("text", async (ctx) => {
     const category = ctx.session.awaitingHelpMessage;
     ctx.session.awaitingHelpMessage = null;
 
-    await ctx.reply("✅ Your message has been sent to admin. Please wait for a response.");
+    // Confirmation message to user
+    await ctx.reply(
+      "✅ Your message has been sent to admin.\nPlease wait while our support team reviews and responds shortly."
+    );
 
     // Notify admin(s)
     const admins = (process.env.ADMIN_TELEGRAM_ID || "")
@@ -667,7 +671,7 @@ bot.on("text", async (ctx) => {
       try {
         await bot.telegram.sendMessage(
           adminId,
-          `📩 *New Help Request*\n\n👤 From: ${username} (ID: ${telegramId})\n📂 Category: ${category}\n💬 Message:\n${text}\n\nReply to user directly using /reply ${telegramId} <your message>`,
+          `📩 *New Help Request*\n\n👤 From: ${username} (ID: ${telegramId})\n📂 Category: ${category}\n💬 Message:\n${text}\n\nReply directly with:\n/reply ${telegramId} <your message>`,
           { parse_mode: "Markdown" }
         );
       } catch (err) {
