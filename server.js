@@ -1,18 +1,20 @@
 import express from "express";
 import dotenv from "dotenv";
-import { Telegraf, Markup } from "telegraf";
+import { Telegraf, Markup, session } from "telegraf";
 
-// ✅ import the Pool connection from db.js
-
+// ✅ Load environment variables
 dotenv.config();
 
-import { session } from "telegraf";
+// ✅ Initialize bot first
+const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
 
+// ✅ Apply session middleware after bot initialization
 bot.use(session());
 
+// ✅ Initialize express app
 const app = express();
 app.use(express.json());
-const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
+
 
 // ---------- Config ----------
 const BOT_TOKEN = process.env.BOT_TOKEN; // required
