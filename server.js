@@ -584,20 +584,120 @@ bot.hears(["🏦 Change Bank", "Change Bank", "Change bank"], async (ctx) => {
   return next();
 });
 
-// Get Help — show list of help topics as inline buttons
-bot.hears(["🆘 Get Help", "Get Help", "Help"], async (ctx) => {
-  await ctx.reply("🆘 How can we help you? Choose a topic:", {
-    reply_markup: {
-      inline_keyboard: [
-        [{ text: "Account/Wallet issue", callback_data: "help:account" }],
-        [{ text: "Withdrawal problem", callback_data: "help:withdrawal" }],
-        [{ text: "Ads not loading", callback_data: "help:ads" }],
-        [{ text: "Other (message)", callback_data: "help:other" }]
-      ]
-    }
-  });
+// ---------- Get Help ----------
+bot.hears("🆘 Get Help", async (ctx) => {
+  try {
+    await ctx.reply(
+      "🆘 *Need assistance?* Choose a help category below:",
+      {
+        parse_mode: "Markdown",
+        reply_markup: {
+          keyboard: [
+            ["💵 Withdraw Issue", "🧩 Task Issue"],
+            ["💳 Bank/Account Issue", "🗣 Other"],
+            ["🔙 Back to Menu"],
+          ],
+          resize_keyboard: true,
+        },
+      }
+    );
+  } catch (e) {
+    console.error("Get help menu error:", e);
+  }
 });
 
+// ---------- Help Category Handlers ----------
+bot.hears(["💵 Withdraw Issue", "🧩 Task Issue", "💳 Bank/Account Issue"], async (ctx) => {
+  const topic = ctx.message.text;
+  await ctx.reply(
+    `✅ You selected *${topic}*\nPlease describe your issue briefly, and an admin will assist you shortly.`,
+    { parse_mode: "Markdown" }
+  );
+  await ctx.reply("Type your message now 👇");
+  ctx.session = ctx.session || {};
+  ctx.session.awaitingHelpMessage = topic;
+});
+
+// ---------- Other / Chat with Admin ----------
+bot.hears("🗣 Other", async (ctx) => {
+  ctx.session = ctx.session || {};
+  ctx.session.awaitingHelpMessage = "Other";
+  await ctx.reply(
+    "✍️ Please type your message for the admin.\nOur support team will respond shortly."
+  );
+});
+
+// ---------- Capture Help Message and Notify Admin ----------
+bot.on("text", async (ctx) => {
+  const telegramId = ctx.from.id;
+  const username = ctx.from.username || ctx.from.first_name || "User";
+  const text = ctx.message.text;
+
+  // Ignore standard menu buttons
+  const ALLOWED_TEXTS = new Set([
+    "💼 Wallet Balance",
+    "🎥 Perform Task",
+    "💸 Withdraw",
+    "👥 Refer & Earn",
+    "🏦 Change Bank",
+    "🆘 Get Help",
+    "Done",
+    "Submit",
+    "🔙 Back to Menu",
+    "💵 Withdraw Issue",
+    "🧩 Task Issue",
+    "💳 Bank/Account Issue",
+    "🗣 Other",
+  ]);
+  if (ALLOWED_TEXTS.has(text)) return;
+
+  if (ctx.session && ctx.session.awaitingHelpMessage) {
+    const category = ctx.session.awaitingHelpMessage;
+    ctx.session.awaitingHelpMessage = null;
+
+    await ctx.reply("✅ Your message has been sent to admin. Please wait for a response.");
+
+    // Notify admin(s)
+    const admins = (process.env.ADMIN_TELEGRAM_ID || "")
+      .split(",")
+      .map((x) => x.trim())
+      .filter(Boolean);
+
+    for (const adminId of admins) {
+      try {
+        await bot.telegram.sendMessage(
+          adminId,
+          `📩 *New Help Request*\n\n👤 From: ${username} (ID: ${telegramId})\n📂 Category: ${category}\n💬 Message:\n${text}\n\nReply to user directly using /reply ${telegramId} <your message>`,
+          { parse_mode: "Markdown" }
+        );
+      } catch (err) {
+        console.error("Failed to notify admin:", err.message);
+      }
+    }
+  }
+});
+
+// ---------- Admin Reply Command ----------
+bot.command("reply", async (ctx) => {
+  const parts = ctx.message.text.split(" ");
+  if (parts.length < 3)
+    return ctx.reply("Usage: /reply <user_id> <message>");
+
+  const userId = parts[1];
+  const message = parts.slice(2).join(" ");
+
+  try {
+    await bot.telegram.sendMessage(
+      userId,
+      `📩 *Admin Reply:*\n${message}`,
+      { parse_mode: "Markdown" }
+    );
+    await ctx.reply("✅ Message sent to user successfully.");
+  } catch (e) {
+    console.error("Reply error:", e);
+    await ctx.reply("⚠️ Failed to send message to user.");
+  }
+});
 
 // ---------- Admin: list pending withdrawals ----------
 bot.command("pending_withdrawals", async (ctx) => {
