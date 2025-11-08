@@ -1,13 +1,14 @@
 import express from "express";
 import dotenv from "dotenv";
 import { Telegraf, Markup } from "telegraf";
-import { session } from "telegraf";
-
-bot.use(session());
 
 // ✅ import the Pool connection from db.js
 
 dotenv.config();
+
+import { session } from "telegraf";
+
+bot.use(session());
 
 const app = express();
 app.use(express.json());
