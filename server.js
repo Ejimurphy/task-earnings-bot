@@ -690,23 +690,31 @@ bot.on("text", async (ctx) => {
 
 // ---------- Admin Reply Command ----------
 bot.command("reply", async (ctx) => {
-  const parts = ctx.message.text.split(" ");
-  if (parts.length < 3)
-    return ctx.reply("Usage: /reply <user_id> <message>");
-
-  const userId = parts[1];
-  const message = parts.slice(2).join(" ");
-
   try {
+    const input = ctx.message.text.trim().split(" ");
+    if (input.length < 3) {
+      return ctx.reply("❌ Usage: /reply <user_id> <your message>");
+    }
+
+    const userId = input[1];
+    const message = input.slice(2).join(" ");
+
+    // Verify it’s a valid Telegram ID (numeric)
+    if (!/^\d+$/.test(userId)) {
+      return ctx.reply("⚠️ Invalid user ID. Example: /reply 123456789 Hello there!");
+    }
+
     await bot.telegram.sendMessage(
       userId,
       `📩 *Admin Reply:*\n${message}`,
       { parse_mode: "Markdown" }
     );
-    await ctx.reply("✅ Message sent to user successfully.");
-  } catch (e) {
-    console.error("Reply error:", e);
-    await ctx.reply("⚠️ Failed to send message to user.");
+
+    await ctx.reply(`✅ Reply sent successfully to user ${userId}`);
+    console.log(`Admin ${ctx.from.id} replied to ${userId}: ${message}`);
+  } catch (err) {
+    console.error("Reply error:", err);
+    await ctx.reply("⚠️ Failed to deliver message to user. The user may have not started the bot or blocked it.");
   }
 });
 
