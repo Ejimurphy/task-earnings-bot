@@ -69,30 +69,6 @@ bot.command("admins", async (ctx) => {
 });
 
 // ============================
-// 📩 AUTO FORWARD USER MESSAGES
-// ============================
-bot.on("message", async (ctx) => {
-  const userId = ctx.from.id;
-  const messageText = ctx.message.text;
-
-  // Ignore messages from admins to prevent loops
-  if (ADMINS.has(userId)) return;
-
-  try {
-    // ✅ Auto forward to all admins
-    for (const adminId of ADMINS) {
-      await bot.telegram.sendMessage(
-        adminId,
-        `📨 *New Message from User ${userId}:*\n\n${messageText}\n\nReply with:\n/reply ${userId} <your message>`,
-        { parse_mode: "Markdown" }
-      );
-    }
-  } catch (err) {
-    console.error("Forward error:", err);
-  }
-});
-
-// ============================
 // 📨 ADMIN REPLY COMMAND
 // ============================
 bot.command("reply", async (ctx) => {
