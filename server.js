@@ -751,30 +751,42 @@ bot.on("text", async (ctx) => {
 // ---------- Admin Reply Command ----------
 bot.command("reply", async (ctx) => {
   try {
-    const input = ctx.message.text.trim().split(" ");
-    if (input.length < 3) {
-      return ctx.reply("❌ Usage: /reply <user_id> <your message>");
+    const parts = ctx.message.text.trim().split(" ");
+    if (parts.length < 3) {
+      return ctx.reply("⚠️ Usage: /reply <user_id> <your message>");
     }
 
-    const userId = input[1];
-    const message = input.slice(2).join(" ");
+    const userId = parts[1];
+    const message = parts.slice(2).join(" ");
 
-    // Verify it’s a valid Telegram ID (numeric)
+    // Make sure userId is numeric
     if (!/^\d+$/.test(userId)) {
       return ctx.reply("⚠️ Invalid user ID. Example: /reply 123456789 Hello there!");
     }
 
+    // Try sending the message
     await bot.telegram.sendMessage(
       userId,
       `📩 *Admin Reply:*\n${message}`,
       { parse_mode: "Markdown" }
     );
 
-    await ctx.reply(`✅ Reply sent successfully to user ${userId}`);
-    console.log(`Admin ${ctx.from.id} replied to ${userId}: ${message}`);
+    // Confirm success to admin
+    await ctx.reply(`✅ Message successfully delivered to user ${userId}.`);
+
   } catch (err) {
     console.error("Reply error:", err);
-    await ctx.reply("⚠️ Failed to deliver message to user. The user may have not started the bot or blocked it.");
+
+    // 🧩 Handle user blocking or delivery error clearly
+    if (err.description?.includes("bot was blocked by the user")) {
+      await ctx.reply("⚠️ Cannot deliver message — user has blocked the bot.");
+    } else if (err.description?.includes("user is deactivated")) {
+      await ctx.reply("⚠️ Cannot deliver message — user account is deactivated.");
+    } else if (err.description?.includes("chat not found")) {
+      await ctx.reply("⚠️ Chat not found — user may have deleted the chat or never started the bot.");
+    } else {
+      await ctx.reply(`⚠️ Failed to deliver message. Error: ${err.description || err.message}`);
+    }
   }
 });
 
