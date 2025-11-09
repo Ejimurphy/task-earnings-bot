@@ -750,42 +750,31 @@ bot.on("text", async (ctx) => {
 
 // ---------- Admin Reply Command ----------
 bot.command("reply", async (ctx) => {
+  const parts = ctx.message.text.split(" ");
+  if (parts.length < 3)
+    return ctx.reply("Usage: /reply <user_id> <message>");
+
+  const userId = parts[1];
+  const message = parts.slice(2).join(" ");
+
   try {
-    const parts = ctx.message.text.trim().split(" ");
-    if (parts.length < 3) {
-      return ctx.reply("⚠️ Usage: /reply <user_id> <your message>");
-    }
-
-    const userId = parts[1];
-    const message = parts.slice(2).join(" ");
-
-    // Make sure userId is numeric
-    if (!/^\d+$/.test(userId)) {
-      return ctx.reply("⚠️ Invalid user ID. Example: /reply 123456789 Hello there!");
-    }
-
-    // Try sending the message
     await bot.telegram.sendMessage(
       userId,
       `📩 *Admin Reply:*\n${message}`,
       { parse_mode: "Markdown" }
     );
 
-    // Confirm success to admin
-    await ctx.reply(`✅ Message successfully delivered to user ${userId}.`);
-
+    await ctx.reply(`✅ Message delivered successfully to user (${userId}).`);
   } catch (err) {
     console.error("Reply error:", err);
 
-    // 🧩 Handle user blocking or delivery error clearly
+    // Handle specific Telegram error responses
     if (err.description?.includes("bot was blocked by the user")) {
-      await ctx.reply("⚠️ Cannot deliver message — user has blocked the bot.");
-    } else if (err.description?.includes("user is deactivated")) {
-      await ctx.reply("⚠️ Cannot deliver message — user account is deactivated.");
+      await ctx.reply(`⚠️ Cannot deliver message — user (${userId}) has blocked the bot.`);
     } else if (err.description?.includes("chat not found")) {
-      await ctx.reply("⚠️ Chat not found — user may have deleted the chat or never started the bot.");
+      await ctx.reply(`⚠️ Cannot deliver message — invalid or inactive user ID (${userId}).`);
     } else {
-      await ctx.reply(`⚠️ Failed to deliver message. Error: ${err.description || err.message}`);
+      await ctx.reply("⚠️ Failed to send message to user. Check logs for details.");
     }
   }
 });
