@@ -8,6 +8,130 @@ dotenv.config();
 // ✅ Initialize bot first
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
 
+// ==========================
+// 🔐 ADMIN MANAGEMENT SYSTEM
+// ==========================
+let ADMINS = new Set([
+  5236441213, // Existing main admin ID
+  5725566044, // Secondary admin ID
+]);
+
+// ✅ Command for adding a new admin (only by existing admins)
+bot.command("addadmin", async (ctx) => {
+  const senderId = ctx.from.id;
+  if (!ADMINS.has(senderId)) {
+    return ctx.reply("❌ You are not authorized to add admins.");
+  }
+
+  const input = ctx.message.text.split(" ");
+  if (input.length < 2) {
+    return ctx.reply("⚠️ Usage: /addadmin <user_id>");
+  }
+
+  const newAdminId = parseInt(input[1]);
+  if (isNaN(newAdminId)) {
+    return ctx.reply("⚠️ Invalid user ID.");
+  }
+
+  ADMINS.add(newAdminId);
+  await ctx.reply(`✅ Admin with ID ${newAdminId} added successfully.`);
+});
+
+// ✅ Command for removing an admin
+bot.command("removeadmin", async (ctx) => {
+  const senderId = ctx.from.id;
+  if (!ADMINS.has(senderId)) {
+    return ctx.reply("❌ You are not authorized to remove admins.");
+  }
+
+  const input = ctx.message.text.split(" ");
+  if (input.length < 2) {
+    return ctx.reply("⚠️ Usage: /removeadmin <user_id>");
+  }
+
+  const removeId = parseInt(input[1]);
+  if (ADMINS.has(removeId)) {
+    ADMINS.delete(removeId);
+    await ctx.reply(`✅ Admin with ID ${removeId} removed successfully.`);
+  } else {
+    await ctx.reply("⚠️ That user is not an admin.");
+  }
+});
+
+// ✅ Show current admins
+bot.command("admins", async (ctx) => {
+  if (!ADMINS.has(ctx.from.id)) {
+    return ctx.reply("❌ You are not authorized to view admins.");
+  }
+
+  const list = Array.from(ADMINS).join(", ");
+  await ctx.reply(`👑 *Current Admins:*\n${list}`, { parse_mode: "Markdown" });
+});
+
+// ============================
+// 📩 AUTO FORWARD USER MESSAGES
+// ============================
+bot.on("message", async (ctx) => {
+  const userId = ctx.from.id;
+  const messageText = ctx.message.text;
+
+  // Ignore messages from admins to prevent loops
+  if (ADMINS.has(userId)) return;
+
+  try {
+    // ✅ Auto acknowledgment to user
+    await ctx.reply("✅ Your message has been received. Our support team will get back to you shortly.");
+
+    // ✅ Auto forward to all admins
+    for (const adminId of ADMINS) {
+      await bot.telegram.sendMessage(
+        adminId,
+        `📨 *New Message from User ${userId}:*\n\n${messageText}\n\nReply with:\n/reply ${userId} <your message>`,
+        { parse_mode: "Markdown" }
+      );
+    }
+  } catch (err) {
+    console.error("Forward error:", err);
+  }
+});
+
+// ============================
+// 📨 ADMIN REPLY COMMAND
+// ============================
+bot.command("reply", async (ctx) => {
+  try {
+    const input = ctx.message.text.trim().split(" ");
+    if (input.length < 3) {
+      return ctx.reply("❌ Usage: /reply <user_id> <your message>");
+    }
+
+    const userId = input[1];
+    const message = input.slice(2).join(" ");
+
+    if (!/^\d+$/.test(userId)) {
+      return ctx.reply("⚠️ Invalid user ID. Example: /reply 123456789 Hello there!");
+    }
+
+    await bot.telegram.sendMessage(
+      userId,
+      `📩 *Admin Reply:*\n${message}`,
+      { parse_mode: "Markdown" }
+    );
+
+    await ctx.reply(`✅ Reply sent successfully to user ${userId}`);
+    console.log(`Admin ${ctx.from.id} replied to ${userId}: ${message}`);
+  } catch (err) {
+    console.error("Reply error:", err);
+
+    // 🧩 Add this block here (as you asked)
+    if (err.description?.includes("bot was blocked by the user")) {
+      await ctx.reply("⚠️ Cannot deliver: user has blocked the bot.");
+    } else {
+      await ctx.reply("⚠️ Failed to deliver message to user.");
+    }
+  }
+});
+
 // ✅ Apply session middleware after bot initialization
 bot.use(session());
 
