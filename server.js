@@ -71,31 +71,6 @@ bot.command("admins", async (ctx) => {
 // ============================
 // 📨 ADMIN REPLY COMMAND
 // ============================
-bot.command("reply", async (ctx) => {
-  try {
-    const input = ctx.message.text.trim().split(" ");
-    if (input.length < 3) {
-      return ctx.reply("❌ Usage: /reply <user_id> <your message>");
-    }
-
-    const userId = input[1];
-    const message = input.slice(2).join(" ");
-
-    if (!/^\d+$/.test(userId)) {
-      return ctx.reply("⚠️ Invalid user ID. Example: /reply 123456789 Hello there!");
-    }
-
-    await bot.telegram.sendMessage(
-      userId,
-      `📩 *Admin Reply:*\n${message}`,
-      { parse_mode: "Markdown" }
-    );
-
-    await ctx.reply(`✅ Reply sent successfully to user ${userId}`);
-    console.log(`Admin ${ctx.from.id} replied to ${userId}: ${message}`);
-  } catch (err) {
-    console.error("Reply error:", err);
-
     // 🧩 Add this block here (as you asked)
     if (err.description?.includes("bot was blocked by the user")) {
       await ctx.reply("⚠️ Cannot deliver: user has blocked the bot.");
