@@ -76,9 +76,7 @@ bot.command("admins", async (ctx) => {
       await ctx.reply("⚠️ Cannot deliver: user has blocked the bot.");
     } else {
       await ctx.reply("⚠️ Failed to deliver message to user.");
-    }
-  }
-});
+}
 
 // ✅ Apply session middleware after bot initialization
 bot.use(session());
