@@ -79,9 +79,6 @@ bot.on("message", async (ctx) => {
   if (ADMINS.has(userId)) return;
 
   try {
-    // ✅ Auto acknowledgment to user
-    await ctx.reply("✅ Your message has been received. Our support team will get back to you shortly.");
-
     // ✅ Auto forward to all admins
     for (const adminId of ADMINS) {
       await bot.telegram.sendMessage(
