@@ -379,7 +379,7 @@ bot.hears(["🎥 Perform Task", "Perform Task", "Watch Ads", "Start Task"], asyn
     const performTaskEnabled = await getSetting("perform_task_enabled");
     if (performTaskEnabled === "off") {
       await ctx.reply("⚠️ The Perform Task feature is temporarily disabled. Please try again later.");
-      return; // ✅ this 'return' is now inside the async handler block
+      return; // ✅ Now valid because it's inside the async block
     }
 
     // 🔹 Step 2: Check if user is banned
@@ -409,8 +409,6 @@ bot.hears(["🎥 Perform Task", "Perform Task", "Watch Ads", "Start Task"], asyn
     await ctx.reply("⚠️ Something went wrong. Please try again later.");
   }
 });
-
-
 
     // session URL (uses BASE_URL env if set)
     const base = process.env.BASE_URL || `https://${process.env.RENDER_EXTERNAL_URL || process.env.HOSTNAME || "your-app-url.example"}`;
