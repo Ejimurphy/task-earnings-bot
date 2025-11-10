@@ -749,35 +749,39 @@ bot.on("text", async (ctx) => {
 });
 
 // ---------- Admin Reply Command ----------
-console.log(`Attempting to send message to user ${userId}`);
-
 bot.command("reply", async (ctx) => {
-  const parts = ctx.message.text.split(" ");
-  if (parts.length < 3)
-    return ctx.reply("Usage: /reply <user_id> <message>");
-
-  const userId = parts[1];
-  const message = parts.slice(2).join(" ");
-
   try {
-    await bot.telegram.sendMessage(
-      userId,
-      `📩 *Admin Reply:*\n${message}`,
-      { parse_mode: "Markdown" }
-    );
+    const parts = ctx.message.text.split(" ");
+    if (parts.length < 3)
+      return ctx.reply("Usage: /reply <user_id> <message>");
 
-    await ctx.reply(`✅ Message delivered successfully to user (${userId}).`);
-  } catch (err) {
-    console.error("Reply error:", err);
+    const userId = parts[1];
+    const message = parts.slice(2).join(" ");
 
-    // Handle specific Telegram error responses
-    if (err.description?.includes("bot was blocked by the user")) {
-      await ctx.reply(`⚠️ Cannot deliver message — user (${userId}) has blocked the bot.`);
-    } else if (err.description?.includes("chat not found")) {
-      await ctx.reply(`⚠️ Cannot deliver message — invalid or inactive user ID (${userId}).`);
-    } else {
-      await ctx.reply("⚠️ Failed to send message to user. Check logs for details.");
+    console.log(`Attempting to send message to user ${userId}`);
+
+    try {
+      await bot.telegram.sendMessage(
+        userId,
+        `📩 *Admin Reply:*\n${message}`,
+        { parse_mode: "Markdown" }
+      );
+      await ctx.reply(`✅ Message sent to user ${userId} successfully.`);
+    } catch (err) {
+      console.error("Reply error:", err);
+
+      // handle specific Telegram restrictions
+      if (err.description?.includes("bot was blocked by the user")) {
+        await ctx.reply("⚠️ Cannot deliver: user has blocked the bot.");
+      } else if (err.description?.includes("chat not found")) {
+        await ctx.reply("⚠️ Cannot deliver: user has not started the bot yet.");
+      } else {
+        await ctx.reply("⚠️ Failed to send message to user.");
+      }
     }
+  } catch (e) {
+    console.error("Reply command crash:", e);
+    await ctx.reply("⚠️ Unexpected error while sending reply.");
   }
 });
 
