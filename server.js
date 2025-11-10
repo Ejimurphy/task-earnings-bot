@@ -2,6 +2,8 @@ import express from "express";
 import dotenv from "dotenv";
 import { Telegraf, Markup, session } from "telegraf";
 
+let performTaskEnabled = true; // ✅ Default: ON
+
 // ✅ Load environment variables
 dotenv.config();
 
