@@ -400,12 +400,6 @@ bot.hears(["🎥 Perform Task", "Perform Task", "Watch Ads", "Start Task"], asyn
       ])
     );
 
-  } catch (err) {
-    console.error("Error in Perform Task:", err);
-    await ctx.reply("⚠️ Something went wrong. Please try again later.");
-  }
-});
-
     // session URL (uses BASE_URL env if set)
     const base = process.env.BASE_URL || `https://${process.env.RENDER_EXTERNAL_URL || process.env.HOSTNAME || "your-app-url.example"}`;
     const sessionUrl = `${base.replace(/\/$/, "")}/ad-session/${sessionId}`;
