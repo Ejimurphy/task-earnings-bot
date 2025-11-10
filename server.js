@@ -373,27 +373,30 @@ if (!performTaskEnabled) {
 // Perform Task — create session and send a card-like message with inline "Open Ads" button
 bot.hears(["🎥 Perform Task", "Perform Task", "Watch Ads", "Start Task"], async (ctx) => {
   const telegramId = ctx.from.id;
+
   try {
-    // Check if Perform Task feature is enabled
+    // 🔹 Step 1: Check if Perform Task feature is enabled
     const performTaskEnabled = await getSetting("perform_task_enabled");
     if (performTaskEnabled === "off") {
-      return ctx.reply("⚠️ The Perform Task feature is temporarily disabled. Please try again later.");
+      await ctx.reply("⚠️ The Perform Task feature is temporarily disabled. Please try again later.");
+      return; // ✅ this 'return' is now inside the async handler block
     }
 
-    // Check if user is banned
+    // 🔹 Step 2: Check if user is banned
     const u = await safeQuery("SELECT is_banned FROM users WHERE telegram_id=$1", [telegramId]);
     if (u.rows[0] && u.rows[0].is_banned) {
-      return ctx.reply("🚫 Your account is banned. Contact support.");
+      await ctx.reply("🚫 Your account is banned. Contact support.");
+      return;
     }
 
-    // Create or reuse a session — create fresh sessionId
+    // 🔹 Step 3: Create a session
     const sessionId = crypto.randomUUID();
-    await safeQuery("INSERT INTO ad_sessions (id, telegram_id, completed) VALUES ($1,$2,false)", [
-      sessionId,
-      telegramId,
-    ]);
+    await safeQuery(
+      "INSERT INTO ad_sessions (id, telegram_id, completed) VALUES ($1,$2,false)",
+      [sessionId, telegramId]
+    );
 
-    // Continue your normal Perform Task logic here
+    // 🔹 Step 4: Send start message
     await ctx.reply(
       "🎬 Your task session has started! Click the button below to watch ads and earn coins.",
       Markup.inlineKeyboard([
@@ -403,9 +406,10 @@ bot.hears(["🎥 Perform Task", "Perform Task", "Watch Ads", "Start Task"], asyn
 
   } catch (err) {
     console.error("Error in Perform Task:", err);
-    ctx.reply("⚠️ Something went wrong. Please try again later.");
+    await ctx.reply("⚠️ Something went wrong. Please try again later.");
   }
 });
+
 
 
     // session URL (uses BASE_URL env if set)
