@@ -235,14 +235,6 @@ async function initializeDatabase() {
     );
   `;
 
-  await pool.query(`
-  CREATE TABLE IF NOT EXISTS settings (
-    id SERIAL PRIMARY KEY,
-    key TEXT UNIQUE NOT NULL,
-    value TEXT NOT NULL
-  );
-`);
-
   await pool.query(sql);
   console.log("✅ All database tables created successfully!");
 }
