@@ -959,7 +959,6 @@ bot.on("callback_query", async (ctx) => {
 });
 
 // Start the bot and server safely
-const PORT = process.env.PORT || 10000;
 
 async function startBot() {
   try {
