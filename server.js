@@ -424,7 +424,7 @@ bot.hears(["🎥 Perform Task", "Perform Task", "Watch Ads", "Start Task"], asyn
         ]
       }
     });
-  } catch (e) {
+  } catch (err) {
     console.error("perform task error", e);
     await ctx.reply("❌ error creating task session");
   }
