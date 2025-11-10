@@ -374,16 +374,39 @@ if (!performTaskEnabled) {
 bot.hears(["🎥 Perform Task", "Perform Task", "Watch Ads", "Start Task"], async (ctx) => {
   const telegramId = ctx.from.id;
   try {
-    // check ban
-    const u = await safeQuery("SELECT is_banned FROM users WHERE telegram_id=$1", [telegramId]);
-    if (u.rows[0] && u.rows[0].is_banned) return ctx.reply("🚫 Your account is banned. Contact support.");
+    // Step 1: Check if Perform Task feature is enabled
+    const performTaskEnabled = await getSetting("perform_task_enabled");
+    if (performTaskEnabled === "off") {
+      return ctx.reply("⚠️ The Perform Task feature is temporarily disabled. Please try again later.");
+    }
 
-    // create or reuse a session: create fresh sessionId
+    // Check if user is banned
+    const u = await safeQuery("SELECT is_banned FROM users WHERE telegram_id=$1", [telegramId]);
+    if (u.rows[0] && u.rows[0].is_banned) {
+      return ctx.reply("🚫 Your account is banned. Contact support.");
+    }
+
+    // Create or reuse a session — create fresh sessionId
     const sessionId = crypto.randomUUID();
     await safeQuery("INSERT INTO ad_sessions (id, telegram_id, completed) VALUES ($1,$2,false)", [
       sessionId,
       telegramId,
     ]);
+
+    // Continue your normal Perform Task logic here
+    await ctx.reply(
+      "🎬 Your task session has started! Click the button below to watch ads and earn coins.",
+      Markup.inlineKeyboard([
+        [Markup.button.url("▶️ Open Ads", `${process.env.BASE_URL}/ads/${sessionId}`)],
+      ])
+    );
+
+  } catch (err) {
+    console.error("Error in Perform Task:", err);
+    ctx.reply("⚠️ Something went wrong. Please try again later.");
+  }
+});
+
 
     // session URL (uses BASE_URL env if set)
     const base = process.env.BASE_URL || `https://${process.env.RENDER_EXTERNAL_URL || process.env.HOSTNAME || "your-app-url.example"}`;
