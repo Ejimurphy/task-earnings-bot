@@ -55,6 +55,26 @@ bot.command("toggle_tasks", async (ctx) => {
   await ctx.reply(`🎥 Perform Task feature is now *${status}*`, { parse_mode: "Markdown" });
 });
 
+bot.command("toggle_tasks", async (ctx) => {
+  const adminIds = (process.env.ADMIN_TELEGRAM_ID || "")
+    .split(",")
+    .map((x) => x.trim());
+
+  if (!adminIds.includes(String(ctx.from.id))) {
+    return ctx.reply("⚠️ You are not authorized to use this command.");
+  }
+
+  performTaskEnabled = !performTaskEnabled;
+  const status = performTaskEnabled ? "enabled" : "disabled";
+
+  await setSetting("perform_task", status);
+
+  await ctx.reply(
+    `🎥 Perform Task feature is now *${status.toUpperCase()}*`,
+    { parse_mode: "Markdown" }
+  );
+});
+
 // ---------- Admin Check Task Status ----------
 bot.command("task_status", async (ctx) => {
   const adminIds = (process.env.ADMIN_TELEGRAM_ID || "")
