@@ -964,6 +964,17 @@ bot.on("callback_query", async (ctx) => {
   app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
   bot.launch().then(() => console.log("Bot launched")).catch((e) => console.error("Bot launch err:", e));
 })();
+if (process.env.NODE_ENV === "production") {
+  // Use webhook for Render deployment
+  const webhookUrl = `${process.env.RENDER_EXTERNAL_URL}/bot${process.env.TELEGRAM_BOT_TOKEN}`;
+  await bot.telegram.setWebhook(webhookUrl);
+  app.use(bot.webhookCallback(`/bot${process.env.TELEGRAM_BOT_TOKEN}`));
+  console.log(`🚀 Bot running in webhook mode at: ${webhookUrl}`);
+} else {
+  // Use polling for local development
+  await bot.launch();
+  console.log("🤖 Bot running in local polling mode");
+}
 
 // Graceful shutdown
 process.once("SIGINT", () => bot.stop("SIGINT"));
