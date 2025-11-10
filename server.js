@@ -749,6 +749,8 @@ bot.on("text", async (ctx) => {
 });
 
 // ---------- Admin Reply Command ----------
+console.log(`Attempting to send message to user ${userId}`);
+
 bot.command("reply", async (ctx) => {
   const parts = ctx.message.text.split(" ");
   if (parts.length < 3)
