@@ -374,7 +374,7 @@ if (!performTaskEnabled) {
 bot.hears(["🎥 Perform Task", "Perform Task", "Watch Ads", "Start Task"], async (ctx) => {
   const telegramId = ctx.from.id;
   try {
-    // Step 1: Check if Perform Task feature is enabled
+    // Check if Perform Task feature is enabled
     const performTaskEnabled = await getSetting("perform_task_enabled");
     if (performTaskEnabled === "off") {
       return ctx.reply("⚠️ The Perform Task feature is temporarily disabled. Please try again later.");
