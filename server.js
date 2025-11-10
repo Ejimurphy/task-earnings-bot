@@ -456,11 +456,11 @@ app.get("/ad-session/:sessionId", async (req, res) => {
     }
 
     // get updated count after possible reset
-    const updatedRow = await safeQuery(
-      `SELECT COUNT(*)::int AS cnt FROM ad_views WHERE session_id=$1 AND validated=true`,
-      [sessionId]
-    );
-    const updatedCount = Number(updatedRow.rows[0]?.cnt || 0);
+const updatedRow = await safeQuery(
+  `SELECT COUNT(*)::int AS cnt FROM ad_views WHERE session_id=$1 AND validated=true`,
+  [sessionId]
+);
+const updatedCount = Number(updatedRow.rows[0]?.cnt || 0);
 
     // Serve a simple card-style HTML page with SDK, progress and an "Open Ad" button
     res.send(`<!doctype html>
