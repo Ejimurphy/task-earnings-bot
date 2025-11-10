@@ -958,33 +958,26 @@ bot.on("callback_query", async (ctx) => {
   }
 });
 
-// Start DB, bot, server
-(async () => {
-  await initializeDatabase();
-  app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
-  })();
+// Start the bot and server safely
+const PORT = process.env.PORT || 10000;
 
-// ✅ Launch bot correctly for both local and Render environments
-const startBot = async () => {
+async function startBot() {
   try {
-    if (process.env.NODE_ENV === "production") {
-      const webhookUrl = `${process.env.RENDER_EXTERNAL_URL}/bot${process.env.TELEGRAM_BOT_TOKEN}`;
-      await bot.telegram.setWebhook(webhookUrl);
-      app.use(bot.webhookCallback(`/bot${process.env.TELEGRAM_BOT_TOKEN}`));
-      console.log(`🚀 Bot running in webhook mode at: ${webhookUrl}`);
-    } else {
-      await bot.launch();
-      console.log("🤖 Bot running in local polling mode");
-    }
-
-    // Start express server
+    // Start express server only once
     app.listen(PORT, () => {
-      console.log(`✅ Server running on port ${PORT}`);
+      console.log(`Server running on port ${PORT}`);
     });
+
+    // Webhook configuration for Render (use BASE_URL)
+    const webhookUrl = `${process.env.BASE_URL}/bot${process.env.TELEGRAM_BOT_TOKEN}`;
+    await bot.telegram.setWebhook(webhookUrl);
+    app.use(bot.webhookCallback(`/bot${process.env.TELEGRAM_BOT_TOKEN}`));
+
+    console.log(`🚀 Bot running in webhook mode at: ${webhookUrl}`);
   } catch (err) {
-    console.error("Bot launch err:", err);
+    console.error("Bot launch error:", err);
   }
-};
+}
 
 startBot();
 
