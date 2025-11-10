@@ -331,6 +331,10 @@ bot.hears("💼 Wallet Balance", async (ctx) => {
   }
 });
 
+if (!performTaskEnabled) {
+  return ctx.reply("⚠️ The Perform Task feature is temporarily disabled. Please try again later.");
+}
+
 // Perform Task — create session and send a card-like message with inline "Open Ads" button
 bot.hears(["🎥 Perform Task", "Perform Task", "Watch Ads", "Start Task"], async (ctx) => {
   const telegramId = ctx.from.id;
