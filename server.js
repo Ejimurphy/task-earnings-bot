@@ -3,8 +3,11 @@ import dotenv from "dotenv";
 import express from "express";
 import crypto from "crypto";
 import pool from "./src/db.js";
+
+// ✅ Initialize express app
 const app = express();
 app.use(express.json());
+
 let performTaskEnabled = true; // ✅ Default: ON
 
 // ✅ Load environment variables
@@ -106,11 +109,6 @@ bot.command("removeadmin", async (ctx) => {
 
 // ✅ Apply session middleware after bot initialization
 bot.use(session());
-
-// ✅ Initialize express app
-const app = express();
-app.use(express.json());
-
 
 // ---------- Config ----------
 const BOT_TOKEN = process.env.BOT_TOKEN; // required
@@ -1163,11 +1161,6 @@ bot.on("callback_query", async (ctx) => {
 
 async function startBot() {
   try {
-    // Start express server only once
-    app.listen(PORT, () => {
-      console.log(`Server running on port ${PORT}`);
-    });
-
     // Webhook configuration for Render (use BASE_URL)
     const webhookUrl = `${process.env.BASE_URL}/bot${process.env.TELEGRAM_BOT_TOKEN}`;
     await bot.telegram.setWebhook(webhookUrl);
