@@ -386,6 +386,52 @@ Select an option below to proceed:
   );
 });
 
+// ✅ Enable Perform Task
+bot.action("admin_enable_task", async (ctx) => {
+  await setSetting("perform_task_enabled", "on");
+  await ctx.editMessageCaption("✅ *Perform Task feature has been ENABLED.*", { parse_mode: "Markdown" });
+});
+
+// 🔴 Disable Perform Task
+bot.action("admin_disable_task", async (ctx) => {
+  await setSetting("perform_task_enabled", "off");
+  await ctx.editMessageCaption("🚫 *Perform Task feature has been DISABLED.*", { parse_mode: "Markdown" });
+});
+
+// 📢 Broadcast Message
+bot.action("admin_broadcast", async (ctx) => {
+  await ctx.reply("📢 Please send the message you want to broadcast to all users.");
+  ctx.session = ctx.session || {};
+  ctx.session.awaitingBroadcast = true;
+});
+
+// 🚫 Ban User
+bot.action("admin_ban", async (ctx) => {
+  await ctx.reply("🚫 Send the user’s Telegram ID you want to ban.");
+  ctx.session = ctx.session || {};
+  ctx.session.awaitingBan = true;
+});
+
+// ✅ Unban User
+bot.action("admin_unban", async (ctx) => {
+  await ctx.reply("✅ Send the user’s Telegram ID you want to unban.");
+  ctx.session = ctx.session || {};
+  ctx.session.awaitingUnban = true;
+});
+
+// 📊 View Stats
+bot.action("admin_stats", async (ctx) => {
+  const users = await safeQuery("SELECT COUNT(*) FROM users");
+  const totalUsers = users.rows[0].count;
+
+  const ads = await safeQuery("SELECT COUNT(*) FROM ad_views");
+  const totalViews = ads.rows[0].count;
+
+  await ctx.replyWithMarkdown(
+    `📊 *Platform Stats:*\n\n👥 Users: ${totalUsers}\n🎥 Ad Views: ${totalViews}`
+  );
+});
+            
 // ---------- Wallet balance (coins + USD + cash) ----------
 bot.hears("💼 Wallet Balance", async (ctx) => {
   const telegramId = ctx.from.id;
