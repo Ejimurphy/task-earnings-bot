@@ -387,7 +387,6 @@ Select an option below to proceed:
   );
 });
 
-
 // ✅ Enable Perform Task
 bot.action("admin_enable_task", async (ctx) => {
   await setSetting("perform_task_enabled", "on");
@@ -433,7 +432,24 @@ bot.action("admin_stats", async (ctx) => {
     `📊 *Platform Stats:*\n\n👥 Users: ${totalUsers}\n🎥 Ad Views: ${totalViews}`
   );
 });
-            
+
+// 🧠 Back to Main Menu
+bot.action("back_to_main_menu", async (ctx) => {
+  await ctx.deleteMessage(); // remove admin panel
+  await ctx.reply(
+    "🏠 *Main Menu* — Choose an option below:",
+    {
+      parse_mode: "Markdown",
+      ...Markup.keyboard([
+        ["🎥 Perform Task", "💰 Wallet"],
+        ["👥 Referral", "📞 Support"],
+      ])
+        .resize()
+        .oneTime(),
+    }
+  );
+});
+
 // ---------- Wallet balance (coins + USD + cash) ----------
 bot.hears("💼 Wallet Balance", async (ctx) => {
   const telegramId = ctx.from.id;
