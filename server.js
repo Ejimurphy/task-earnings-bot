@@ -961,6 +961,46 @@ bot.command("reply", async (ctx) => {
   }
 });
 
+// ---------------- ADMIN ACTION MESSAGE HANDLER ----------------
+bot.on("text", async (ctx) => {
+  const telegramId = String(ctx.from.id);
+  const adminIds = process.env.ADMIN_TELEGRAM_ID.split(",").map((id) => id.trim());
+  ctx.session = ctx.session || {};
+
+  if (!adminIds.includes(telegramId)) return; // only handle for admin
+
+  // 📢 Broadcast
+  if (ctx.session.awaitingBroadcast) {
+    ctx.session.awaitingBroadcast = false;
+    const message = ctx.message.text;
+    const users = await safeQuery("SELECT telegram_id FROM users");
+    let sent = 0;
+    for (const u of users.rows) {
+      try {
+        await bot.telegram.sendMessage(u.telegram_id, message);
+        sent++;
+      } catch {}
+    }
+    return ctx.reply(`✅ Broadcast sent to ${sent} users.`);
+  }
+
+  // 🚫 Ban
+  if (ctx.session.awaitingBan) {
+    ctx.session.awaitingBan = false;
+    const targetId = ctx.message.text.trim();
+    await safeQuery("UPDATE users SET is_banned=true WHERE telegram_id=$1", [targetId]);
+    return ctx.reply(`🚫 User ${targetId} has been banned.`);
+  }
+
+  // ✅ Unban
+  if (ctx.session.awaitingUnban) {
+    ctx.session.awaitingUnban = false;
+    const targetId = ctx.message.text.trim();
+    await safeQuery("UPDATE users SET is_banned=false WHERE telegram_id=$1", [targetId]);
+    return ctx.reply(`✅ User ${targetId} has been unbanned.`);
+  }
+});
+
 // ---------- Admin: list pending withdrawals ----------
 bot.command("pending_withdrawals", async (ctx) => {
   if (!isAdmin(ctx.from.id)) return ctx.reply("❌ You are not authorized.");
@@ -1131,46 +1171,6 @@ bot.on("callback_query", async (ctx) => {
     try {
       await ctx.answerCbQuery("Error processing your request");
     } catch (e2) {}
-  }
-});
-
-// ---------------- ADMIN ACTION MESSAGE HANDLER ----------------
-bot.on("text", async (ctx) => {
-  const telegramId = String(ctx.from.id);
-  const adminIds = process.env.ADMIN_TELEGRAM_ID.split(",").map((id) => id.trim());
-  ctx.session = ctx.session || {};
-
-  if (!adminIds.includes(telegramId)) return; // only handle for admin
-
-  // 📢 Broadcast
-  if (ctx.session.awaitingBroadcast) {
-    ctx.session.awaitingBroadcast = false;
-    const message = ctx.message.text;
-    const users = await safeQuery("SELECT telegram_id FROM users");
-    let sent = 0;
-    for (const u of users.rows) {
-      try {
-        await bot.telegram.sendMessage(u.telegram_id, message);
-        sent++;
-      } catch {}
-    }
-    return ctx.reply(`✅ Broadcast sent to ${sent} users.`);
-  }
-
-  // 🚫 Ban
-  if (ctx.session.awaitingBan) {
-    ctx.session.awaitingBan = false;
-    const targetId = ctx.message.text.trim();
-    await safeQuery("UPDATE users SET is_banned=true WHERE telegram_id=$1", [targetId]);
-    return ctx.reply(`🚫 User ${targetId} has been banned.`);
-  }
-
-  // ✅ Unban
-  if (ctx.session.awaitingUnban) {
-    ctx.session.awaitingUnban = false;
-    const targetId = ctx.message.text.trim();
-    await safeQuery("UPDATE users SET is_banned=false WHERE telegram_id=$1", [targetId]);
-    return ctx.reply(`✅ User ${targetId} has been unbanned.`);
   }
 });
 
