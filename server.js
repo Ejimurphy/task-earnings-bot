@@ -3,6 +3,8 @@ import dotenv from "dotenv";
 import express from "express";
 import crypto from "crypto";
 import pool from "./src/db.js";
+const app = express();
+app.use(express.json());
 let performTaskEnabled = true; // ✅ Default: ON
 
 // ✅ Load environment variables
@@ -1178,6 +1180,9 @@ async function startBot() {
 }
 
 startBot();
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
 
 // Graceful shutdown
 process.once("SIGINT", () => bot.stop("SIGINT"));
