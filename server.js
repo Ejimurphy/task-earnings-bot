@@ -364,7 +364,7 @@ Select an option below to proceed:
 `;
 
   await ctx.replyWithPhoto(
-    { url: "https://i.imgur.com/2R1ZbN2.png" }, // Replace with your brand logo if desired
+    { url: "https://i.ibb.co/4d1w2kD/fonpay-logo.png" }, // Replace with your brand logo if desired
     {
       caption: text,
       parse_mode: "Markdown",
