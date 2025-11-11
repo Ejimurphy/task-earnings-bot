@@ -2,7 +2,7 @@ import { Telegraf, Markup, session } from "telegraf";
 import dotenv from "dotenv";
 import express from "express";
 import crypto from "crypto";
-
+import pool from "./src/db.js";
 let performTaskEnabled = true; // ✅ Default: ON
 
 // ✅ Load environment variables
@@ -140,7 +140,6 @@ if (!DATABASE_URL) {
 }
 
 // --- Unified Database Initialization ---
-import pool from "./src/db.js";
 async function initializeDatabase() {
   const sql = `
     -- 🧍 USERS TABLE
