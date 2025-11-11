@@ -344,8 +344,6 @@ function mainMenuKeyboard() {
   ]).resize();
 }
 
-import { Markup } from "telegraf";
-
 // ✅ Admin IDs
 const ADMIN_IDS = [5236441213, 5725566044];
 
