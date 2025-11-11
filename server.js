@@ -364,7 +364,7 @@ Select an option below to proceed:
 `;
 
   await ctx.replyWithPhoto(
-    { url: "https://i.imgur.com/2R1ZbN2.png" }, // you can replace with your brand image
+    { url: "https://i.imgur.com/2R1ZbN2.png" }, // Replace with your brand logo if desired
     {
       caption: text,
       parse_mode: "Markdown",
@@ -381,10 +381,12 @@ Select an option below to proceed:
           Markup.button.callback("🚫 Ban User", "admin_ban"),
           Markup.button.callback("✅ Unban User", "admin_unban"),
         ],
+        [Markup.button.callback("🧠 Back to Main Menu", "back_to_main_menu")],
       ]),
     }
   );
 });
+
 
 // ✅ Enable Perform Task
 bot.action("admin_enable_task", async (ctx) => {
