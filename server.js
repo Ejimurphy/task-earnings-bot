@@ -418,6 +418,24 @@ Select an option below to proceed:
   );
 });
 
+bot.action("open_admin_panel", async (ctx) => {
+  await ctx.answerCbQuery();
+  await ctx.reply(
+    "🛠️ Welcome to the Admin Panel 👑\n\nChoose an option below:",
+    Markup.inlineKeyboard([
+      [
+        Markup.button.callback("🟢 Enable Perform Task", "admin_enable_task"),
+        Markup.button.callback("🔴 Disable Perform Task", "admin_disable_task"),
+      ],
+      [
+        Markup.button.callback("📢 Broadcast Message", "admin_broadcast"),
+        Markup.button.callback("📊 View Stats", "admin_stats"),
+      ],
+      [Markup.button.callback("➡️ More Options", "admin_next_page")],
+    ])
+  );
+});
+
 // ✅ Enable Perform Task
 bot.action("admin_enable_task", async (ctx) => {
   await setSetting("perform_task_enabled", "on");
