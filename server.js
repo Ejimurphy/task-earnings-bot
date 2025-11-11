@@ -3,8 +3,6 @@ import dotenv from "dotenv";
 import express from "express";
 import crypto from "crypto";
 
-const ADMIN_IDS = [5236441213, 5725566044];
-
 function getMainMenu(ctx) {
 }
 
