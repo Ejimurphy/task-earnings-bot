@@ -105,21 +105,6 @@ bot.command("removeadmin", async (ctx) => {
   const removeId = parseInt(input[1]);
   if (ADMINS.has(removeId)) {
     ADMINS.delete(removeId);
-    await ctx.reply(`✅ Admin with ID ${removeId} removed successfully.`);
-  } else {
-    await ctx.reply("⚠️ That user is not an admin.");
-  }
-});
-
-// ✅ Show current admins
-bot.command("admins", async (ctx) => {
-  if (!ADMINS.has(ctx.from.id)) {
-    return ctx.reply("❌ You are not authorized to view admins.");
-  }
-
-  const list = Array.from(ADMINS).join(", ");
-  await ctx.reply(`👑 *Current Admins:*\n${list}`, { parse_mode: "Markdown" });
-});
 
 // ✅ Apply session middleware after bot initialization
 bot.use(session());
@@ -414,7 +399,22 @@ Select an option below to proceed:
   );
 });
 
+    await ctx.reply(`✅ Admin with ID ${removeId} removed successfully.`);
+  } else {
+    await ctx.reply("⚠️ That user is not an admin.");
+  }
+});
 
+// ✅ Show current admins
+bot.command("admins", async (ctx) => {
+  if (!ADMINS.has(ctx.from.id)) {
+    return ctx.reply("❌ You are not authorized to view admins.");
+  }
+
+  const list = Array.from(ADMINS).join(", ");
+  await ctx.reply(`👑 *Current Admins:*\n${list}`, { parse_mode: "Markdown" });
+});
+  
 // ✅ Enable Perform Task
 bot.action("admin_enable_task", async (ctx) => {
   await setSetting("perform_task_enabled", "on");
