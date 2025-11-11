@@ -64,16 +64,6 @@ bot.command("toggle_tasks", async (ctx) => {
   if (!adminIds.includes(String(ctx.from.id))) {
     return ctx.reply("⚠️ You are not authorized to use this command.");
   }
-
-  performTaskEnabled = !performTaskEnabled;
-  const status = performTaskEnabled ? "enabled" : "disabled";
-
-  await setSetting("perform_task", status);
-
-  await ctx.reply(
-    `🎥 Perform Task feature is now *${status.toUpperCase()}*`,
-    { parse_mode: "Markdown" }
-  );
 });
 
 // ---------- Admin Check Task Status ----------
@@ -336,17 +326,6 @@ function getMainMenu(ctx) {
     [Markup.button.callback("🏦 Change Bank", "change_bank"), Markup.button.callback("🆘 Get Help", "get_help")],
   ];
 
-  // add admin-only menu items
-  if (isAdmin) {
-    buttons.push([
-      Markup.button.callback("📊 Admin Dashboard", "admin_dashboard"),
-      Markup.button.callback("📢 Broadcast Message", "broadcast_message"),
-    ]);
-  }
-
-  return Markup.inlineKeyboard(buttons);
-}
-
 // ---------------- ADMIN CONTROL PANEL (Card-style UI) ----------------
 bot.command("admin", async (ctx) => {
   const telegramId = String(ctx.from.id);
@@ -383,17 +362,11 @@ Select an option below to proceed:
           Markup.button.callback("🚫 Ban User", "admin_ban"),
           Markup.button.callback("✅ Unban User", "admin_unban"),
         ],
-        [Markup.button.callback("🧠 Back to Main Menu", "back_to_main_menu")],
         [
-        Markup.button.callback("🟢 Enable Perform Task", "admin_enable_task"),
-        Markup.button.callback("🔴 Disable Perform Task", "admin_disable_task"),
-      ],
-      [
-        Markup.button.callback("📢 Broadcast Message", "admin_broadcast"),
-        Markup.button.callback("📊 View Stats", "admin_stats"),
-      ],
-      [Markup.button.callback("➡️ More Options", "admin_next_page")],
-      ]),
+         Markup.button.callback("🧠 Back to Main Menu", "back_to_main_menu"),
+         Markup.button.callback("➡️ More Options", "admin_next_page"),
+        ],
+       ]),
     }
   );
 });
