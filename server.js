@@ -340,10 +340,41 @@ function mainMenuKeyboard() {
   ]).resize();
 }
 
-// ---------- /menu ----------
-bot.command("menu", async (ctx) => {
-  await ctx.reply("📍 Choose an option:", mainMenuKeyboard());
-});
+import { Markup } from "telegraf";
+
+// ✅ Admin IDs
+const ADMIN_IDS = [5236441213, 5725566044];
+
+function getMainMenu(ctx) {
+  const telegramId = ctx.from.id;
+  const isAdmin = ADMIN_IDS.includes(telegramId);
+
+  // normal user menu
+  let buttons = [
+    [Markup.button.callback("💼 Wallet Balance", "wallet_balance"), Markup.button.callback("🎥 Perform Task", "perform_task")],
+    [Markup.button.callback("💸 Withdraw", "withdraw"), Markup.button.callback("👥 Refer & Earn", "refer_earn")],
+    [Markup.button.callback("🏦 Change Bank", "change_bank"), Markup.button.callback("🆘 Get Help", "get_help")],
+  ];
+
+  // ✅ Add admin-only buttons
+  if (isAdmin) {
+    buttons.push([
+      Markup.button.callback("🛠️ Admin Panel", "open_admin_panel"),
+    ]);
+  }
+
+  return Markup.inlineKeyboard(buttons);
+}
+
+async function showMainMenu(ctx) {
+  await ctx.reply(
+    "🏠 *Main Menu*\nChoose an option below to continue:",
+    {
+      parse_mode: "Markdown",
+      reply_markup: getMainMenu(ctx),
+    }
+  );
+}
 
 // ---------------- ADMIN CONTROL PANEL (Card-style UI) ----------------
 bot.command("admin", async (ctx) => {
@@ -430,23 +461,6 @@ bot.action("admin_stats", async (ctx) => {
 
   await ctx.replyWithMarkdown(
     `📊 *Platform Stats:*\n\n👥 Users: ${totalUsers}\n🎥 Ad Views: ${totalViews}`
-  );
-});
-
-// 🧠 Back to Main Menu
-bot.action("back_to_main_menu", async (ctx) => {
-  await ctx.deleteMessage(); // remove admin panel
-  await ctx.reply(
-    "🏠 *Main Menu* — Choose an option below:",
-    {
-      parse_mode: "Markdown",
-      ...Markup.keyboard([
-        ["🎥 Perform Task", "💰 Wallet"],
-        ["👥 Referral", "📞 Support"],
-      ])
-        .resize()
-        .oneTime(),
-    }
   );
 });
 
