@@ -344,9 +344,6 @@ function mainMenuKeyboard() {
   ]).resize();
 }
 
-// ✅ Admin IDs
-const ADMIN_IDS = [5236441213, 5725566044];
-
 function getMainMenu(ctx) {
   const telegramId = ctx.from.id;
   const isAdmin = ADMIN_IDS.includes(telegramId);
