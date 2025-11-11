@@ -3,9 +3,6 @@ import dotenv from "dotenv";
 import express from "express";
 import crypto from "crypto";
 
-function getMainMenu(ctx) {
-}
-
 let performTaskEnabled = true; // ✅ Default: ON
 
 // ✅ Load environment variables
@@ -355,24 +352,15 @@ function getMainMenu(ctx) {
     [Markup.button.callback("🏦 Change Bank", "change_bank"), Markup.button.callback("🆘 Get Help", "get_help")],
   ];
 
-  // ✅ Add admin-only buttons
+  // add admin-only menu items
   if (isAdmin) {
     buttons.push([
-      Markup.button.callback("🛠️ Admin Panel", "open_admin_panel"),
+      Markup.button.callback("📊 Admin Dashboard", "admin_dashboard"),
+      Markup.button.callback("📢 Broadcast Message", "broadcast_message"),
     ]);
   }
 
   return Markup.inlineKeyboard(buttons);
-}
-
-async function showMainMenu(ctx) {
-  await ctx.reply(
-    "🏠 *Main Menu*\nChoose an option below to continue:",
-    {
-      parse_mode: "Markdown",
-      reply_markup: getMainMenu(ctx),
-    }
-  );
 }
 
 // ---------------- ADMIN CONTROL PANEL (Card-style UI) ----------------
@@ -412,17 +400,7 @@ Select an option below to proceed:
           Markup.button.callback("✅ Unban User", "admin_unban"),
         ],
         [Markup.button.callback("🧠 Back to Main Menu", "back_to_main_menu")],
-      ]),
-    }
-  );
-});
-
-bot.action("open_admin_panel", async (ctx) => {
-  await ctx.answerCbQuery();
-  await ctx.reply(
-    "🛠️ Welcome to the Admin Panel 👑\n\nChoose an option below:",
-    Markup.inlineKeyboard([
-      [
+        [
         Markup.button.callback("🟢 Enable Perform Task", "admin_enable_task"),
         Markup.button.callback("🔴 Disable Perform Task", "admin_disable_task"),
       ],
@@ -431,9 +409,11 @@ bot.action("open_admin_panel", async (ctx) => {
         Markup.button.callback("📊 View Stats", "admin_stats"),
       ],
       [Markup.button.callback("➡️ More Options", "admin_next_page")],
-    ])
+      ]),
+    }
   );
 });
+
 
 // ✅ Enable Perform Task
 bot.action("admin_enable_task", async (ctx) => {
