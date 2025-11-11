@@ -345,6 +345,47 @@ bot.command("menu", async (ctx) => {
   await ctx.reply("📍 Choose an option:", mainMenuKeyboard());
 });
 
+// ---------------- ADMIN CONTROL PANEL (Card-style UI) ----------------
+bot.command("admin", async (ctx) => {
+  const telegramId = String(ctx.from.id);
+  const adminIds = process.env.ADMIN_TELEGRAM_ID.split(",").map((id) => id.trim());
+
+  if (!adminIds.includes(telegramId)) {
+    return ctx.reply("⛔ You don’t have permission to access admin controls.");
+  }
+
+  const text = `
+🛠️ *FonPay Task-Earnings Admin Panel*
+
+Welcome, *Admin* 👑  
+Manage system settings and monitor platform activities.
+
+Select an option below to proceed:
+`;
+
+  await ctx.replyWithPhoto(
+    { url: "https://i.imgur.com/2R1ZbN2.png" }, // you can replace with your brand image
+    {
+      caption: text,
+      parse_mode: "Markdown",
+      ...Markup.inlineKeyboard([
+        [
+          Markup.button.callback("🟢 Enable Perform Task", "admin_enable_task"),
+          Markup.button.callback("🔴 Disable Perform Task", "admin_disable_task"),
+        ],
+        [
+          Markup.button.callback("📢 Broadcast Message", "admin_broadcast"),
+          Markup.button.callback("📊 View Stats", "admin_stats"),
+        ],
+        [
+          Markup.button.callback("🚫 Ban User", "admin_ban"),
+          Markup.button.callback("✅ Unban User", "admin_unban"),
+        ],
+      ]),
+    }
+  );
+});
+
 // ---------- Wallet balance (coins + USD + cash) ----------
 bot.hears("💼 Wallet Balance", async (ctx) => {
   const telegramId = ctx.from.id;
