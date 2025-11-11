@@ -98,6 +98,12 @@ bot.command("removeadmin", async (ctx) => {
   if (ADMINS.has(removeId)) {
     ADMINS.delete(removeId);
 
+    await ctx.reply(`✅ Admin with ID ${removeId} removed successfully.`);
+  } else {
+    await ctx.reply("⚠️ That user is not an admin.");
+  }
+});
+
 // ✅ Apply session middleware after bot initialization
 bot.use(session());
 
@@ -371,12 +377,6 @@ Select an option below to proceed:
        ]),
     }
   );
-});
-
-    await ctx.reply(`✅ Admin with ID ${removeId} removed successfully.`);
-  } else {
-    await ctx.reply("⚠️ That user is not an admin.");
-  }
 });
 
 // ✅ Show current admins
