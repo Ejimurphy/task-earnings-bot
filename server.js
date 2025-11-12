@@ -144,3 +144,399 @@ bot.hears("🏦 Change Bank", async (ctx) => {
     { parse_mode: "Markdown", ...mainMenuKeyboard(ADMIN_IDS.includes(ctx.from.id)) }
   );
 });
+
+// ==========================
+// server.js — PART 2 of 4
+// (Paste this directly after Part 1 content)
+// ==========================
+
+/*
+  NOTE:
+  - Part 1 defined `bot`, `app`, `pool`, `safeQuery`, `mainMenuKeyboard`,
+    `ADMIN_IDS`, `BASE_URL`, `performTaskEnabled`, etc.
+  - This part uses those variables; do not re-declare them.
+*/
+
+// ----------------- Help / Support System -----------------
+
+// Show help menu (keyboard)
+bot.hears(["🆘 Get Help", "Get Help", "Help"], async (ctx) => {
+  try {
+    await ctx.reply(
+      "🆘 How can we help you? Choose a topic from the keyboard below, or choose Other to type a custom message.",
+      Markup.keyboard([
+        ["💵 Withdraw Issue", "🧩 Task Issue"],
+        ["💳 Bank/Account Issue", "🗣 Other"],
+        ["🔙 Back to Menu"],
+      ]).resize()
+    );
+  } catch (e) {
+    console.error("Get help menu error:", e);
+    await ctx.reply("⚠️ Error opening help menu.");
+  }
+});
+
+// Help categories — prompt user to type their message
+bot.hears(["💵 Withdraw Issue", "🧩 Task Issue", "💳 Bank/Account Issue"], async (ctx) => {
+  ctx.session = ctx.session || {};
+  ctx.session.awaitingHelpMessage = ctx.message.text;
+  await ctx.reply(
+    `✅ You selected *${ctx.message.text}*.\nPlease type your message below and we'll notify an admin.`,
+    { parse_mode: "Markdown", ...mainMenuKeyboard(ADMIN_IDS.includes(String(ctx.from.id))) }
+  );
+});
+
+// Other / chat with admin — prompt
+bot.hears(["🗣 Other"], async (ctx) => {
+  ctx.session = ctx.session || {};
+  ctx.session.awaitingHelpMessage = "Other";
+  await ctx.reply(
+    "✍️ Please type your message for the admin. An acknowledgement will be sent and admins will be notified.",
+    mainMenuKeyboard(ADMIN_IDS.includes(String(ctx.from.id)))
+  );
+});
+
+// Capture help message and notify admins
+bot.on("text", async (ctx, next) => {
+  // This on("text") is shared with other handlers; ensure we don't block others.
+  ctx.session = ctx.session || {};
+  const awaiting = ctx.session.awaitingHelpMessage;
+
+  // If it's a menu label or command, skip here (let other handlers handle)
+  const text = (ctx.message.text || "").trim();
+  const menuLabels = new Set([
+    "💼 Wallet Balance","🎥 Perform Task","💸 Withdraw","👥 Refer & Earn",
+    "🏦 Change Bank","🆘 Get Help","Done","Submit","🔙 Back to Menu",
+    "💵 Withdraw Issue","🧩 Task Issue","💳 Bank/Account Issue","🗣 Other"
+  ]);
+  if (menuLabels.has(text) || text.startsWith("/")) {
+    return next();
+  }
+
+  if (!awaiting) {
+    // Not a support message, fall through to other handlers
+    return next();
+  }
+
+  // It's a help message to forward to admins
+  ctx.session.awaitingHelpMessage = null;
+  const category = awaiting;
+  const telegramId = String(ctx.from.id);
+  const username = ctx.from.username || ctx.from.first_name || telegramId;
+
+  try {
+    // Save to DB for records
+    await safeQuery(
+      "INSERT INTO support_requests (telegram_id, help_topic, message, status, created_at) VALUES ($1,$2,$3,'pending',NOW())",
+      [telegramId, category, text]
+    );
+
+    // Acknowledge user immediately
+    await ctx.reply(
+      "✅ Your message has been received. An agent will get back to you shortly.\nYou can also message us on WhatsApp if urgent.",
+      mainMenuKeyboard(ADMIN_IDS.includes(telegramId))
+    );
+
+    // Notify admins
+    for (const aid of ADMIN_IDS) {
+      try {
+        await bot.telegram.sendMessage(
+          aid,
+          `📩 *New Help Request*\n\n👤 From: ${username} (ID: ${telegramId})\n📂 Category: ${category}\n💬 Message:\n${text}\n\nReply using: /reply ${telegramId} <your message>`,
+          { parse_mode: "Markdown" }
+        );
+      } catch (err) {
+        console.error("Failed to notify admin:", err?.description || err?.message || err);
+      }
+    }
+  } catch (e) {
+    console.error("Capture help message error:", e);
+    await ctx.reply("⚠️ Failed to submit your request. Please try again.");
+  }
+});
+
+// Admin reply command — reply to user directly
+bot.command("reply", async (ctx) => {
+  const parts = (ctx.message.text || "").split(" ").filter(Boolean);
+  if (parts.length < 3) return ctx.reply("Usage: /reply <user_id> <message>");
+
+  const userId = parts[1];
+  const message = parts.slice(2).join(" ");
+
+  try {
+    await bot.telegram.sendMessage(userId, `📩 *Admin Reply:*\n${message}`, { parse_mode: "Markdown" });
+    await ctx.reply("✅ Message sent to user.");
+  } catch (err) {
+    console.error("Reply error:", err);
+    // Handle common Telegram errors
+    if (String(err).includes("bot was blocked")) {
+      await ctx.reply("⚠️ Cannot deliver: user has blocked the bot.");
+    } else if (String(err).includes("chat not found") || String(err).includes("Bad Request: chat not found")) {
+      await ctx.reply("⚠️ Cannot deliver: user has not started the bot yet.");
+    } else {
+      await ctx.reply("⚠️ Failed to send message to user.");
+    }
+  }
+});
+
+// ----------------- Ad session pages & Monetag postback -----------------
+
+// Ad session web page — shows progress and an Open Ad button (card-style)
+app.get("/ad-session/:sessionId", async (req, res) => {
+  const { sessionId } = req.params;
+  try {
+    // Count validated ad_views for this session
+    const lastRow = await safeQuery(
+      `SELECT COUNT(*)::int AS cnt, MAX(viewed_at) AS last_valid
+       FROM ad_views WHERE session_id=$1 AND validated=true`,
+      [sessionId]
+    );
+    const cnt = Number(lastRow.rows[0]?.cnt || 0);
+    const lastValid = lastRow.rows[0]?.last_valid ? new Date(lastRow.rows[0].last_valid) : null;
+    const now = new Date();
+
+    // if lastValid exists and older than 2 minutes => reset session views
+    if (lastValid && now - lastValid > 2 * 60 * 1000) {
+      // reset progress for this session
+      try {
+        await safeQuery("DELETE FROM ad_views WHERE session_id=$1", [sessionId]);
+        await safeQuery("UPDATE ad_sessions SET progress=0, completed=false WHERE session_id=$1", [sessionId]);
+      } catch (e) {
+        console.error("reset session err:", e);
+      }
+    }
+
+    // get updated count after reset
+    const updatedRow = await safeQuery(
+      `SELECT COUNT(*)::int AS cnt FROM ad_views WHERE session_id=$1 AND validated=true`,
+      [sessionId]
+    );
+    const updatedCount = Number(updatedRow.rows[0]?.cnt || 0);
+
+    // Serve card-style HTML (Monetag SDK included)
+    res.send(`<!doctype html>
+<html>
+<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" /><title>Ad Session</title>
+<style>
+  body{font-family:Inter, system-ui, Arial; background:#f5f7fb; padding:20px}
+  .card{max-width:720px;margin:0 auto;background:#fff;border-radius:12px;padding:20px;box-shadow:0 6px 20px rgba(10,10,30,0.06)}
+  .title{font-size:20px;margin-bottom:6px}
+  .progress{font-size:18px;margin:14px 0}
+  .btn{display:inline-block;padding:10px 14px;border-radius:10px;text-decoration:none;background:#2563eb;color:#fff;font-weight:600;border:none;cursor:pointer}
+  .note{color:#6b7280;font-size:13px;margin-top:12px}
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="title">🎬 Watch Ads — Session</div>
+    <div id="progress" class="progress">Progress: ${updatedCount}/10</div>
+    <div>
+      <button id="openAd" class="btn">▶️ Open Ad</button>
+      <button id="refreshBtn" class="btn" style="background:#10b981;margin-left:8px">🔄 Refresh</button>
+    </div>
+    <div id="note" class="note">Close this page and re-open within 2 minutes to resume progress. After 2 minutes inactivity progress resets.</div>
+  </div>
+
+  <script src='//libtl.com/sdk.js' data-zone='${MONETAG_ZONE}' data-sdk='show_${MONETAG_ZONE}'></script>
+  <script>
+    const sessionId='${sessionId}';
+    async function refresh(){
+      try{
+        const r=await fetch('/api/session/'+sessionId+'/status');
+        const j=await r.json();
+        document.getElementById('progress').innerText='Progress: '+(j.count||0)+'/10';
+        document.getElementById('note').innerText = j.count>=10 ? 'Completed — return to Telegram and submit your session.' : 'Close and re-open within 2 minutes to resume.';
+      }catch(e){ document.getElementById('note').innerText='Error getting progress'; }
+    }
+
+    document.getElementById('openAd').addEventListener('click', function(){
+      try{
+        show_${MONETAG_ZONE}({
+          type:'inApp',
+          custom: 'sessionId=' + sessionId
+        });
+      }catch(e){
+        alert('Ad SDK error: '+e);
+      }
+    });
+    document.getElementById('refreshBtn').addEventListener('click', refresh);
+    setInterval(refresh, 3000);
+    refresh();
+  </script>
+</body>
+</html>`);
+  } catch (e) {
+    console.error("ad-session page error", e);
+    res.status(500).send("Session error");
+  }
+});
+
+// Session status endpoint (used by page polling)
+app.get("/api/session/:sessionId/status", async (req, res) => {
+  const { sessionId } = req.params;
+  try {
+    const r = await safeQuery(
+      `SELECT COUNT(*)::int AS c, MAX(viewed_at) AS last_valid
+       FROM ad_views WHERE session_id=$1 AND validated=true`,
+      [sessionId]
+    );
+    const cnt = Number(r.rows[0]?.c || 0);
+    const lastValid = r.rows[0]?.last_valid ? new Date(r.rows[0].last_valid).toISOString() : null;
+    res.json({ count: cnt, last_valid: lastValid });
+  } catch (e) {
+    console.error("session status err", e);
+    res.json({ count: 0, last_valid: null });
+  }
+});
+
+// Monetag server-side postback (Monetag will call this to validate ad events)
+app.post("/api/monetag/postback", express.json(), async (req, res) => {
+  const payload = req.body || {};
+  try {
+    // Monetag may send `custom` containing "sessionId=..."
+    let sessionId = null;
+    if (payload.custom && typeof payload.custom === "string") {
+      const m = payload.custom.match(/sessionId=([a-zA-Z0-9-_.]+)/);
+      if (m) sessionId = m[1];
+    }
+    if (!sessionId && payload.sessionId) sessionId = payload.sessionId;
+
+    if (!sessionId) {
+      console.warn("postback missing sessionId", payload);
+      return res.status(400).send("missing-session");
+    }
+
+    const telegramId = payload.user_id || null;
+    const adIndex = payload.ad_index ? Number(payload.ad_index) : null;
+
+    await safeQuery(
+      "INSERT INTO ad_views (session_id, telegram_id, ad_index, validated, viewed_at) VALUES ($1,$2,$3,$4,NOW())",
+      [sessionId, telegramId, adIndex, true]
+    );
+
+    // Update session progress count
+    await safeQuery(
+      `UPDATE ad_sessions SET progress = COALESCE(
+         (SELECT COUNT(*) FROM ad_views WHERE session_id = $1 AND validated = true), 0
+       ) WHERE session_id = $1`,
+      [sessionId]
+    );
+
+    return res.status(200).send("ok");
+  } catch (e) {
+    console.error("monetag postback error", e);
+    return res.status(500).send("error");
+  }
+});
+
+// Submit session command: user asks for reward credit after reaching 10 validated ads
+bot.command("submit_session", async (ctx) => {
+  const parts = (ctx.message.text || "").split(" ").filter(Boolean);
+  const sessionId = parts[1];
+  if (!sessionId) return ctx.reply("Usage: /submit_session <sessionId>");
+
+  try {
+    // count validated
+    const r = await safeQuery(
+      `SELECT COUNT(*)::int AS c, a.telegram_id FROM ad_views v
+       JOIN ad_sessions a ON v.session_id = a.session_id
+       WHERE v.session_id=$1 AND v.validated=true GROUP BY a.telegram_id`,
+      [sessionId]
+    );
+    const cnt = Number(r.rows[0]?.c || 0);
+    const telegramId = r.rows[0]?.telegram_id;
+    if (cnt < 10) return ctx.reply(`You completed ${cnt}/10 ads. Finish them before submitting.`);
+
+    // ensure session exists and not already credited
+    const sess = await safeQuery("SELECT completed, telegram_id FROM ad_sessions WHERE session_id=$1", [sessionId]);
+    if (!sess.rows[0]) return ctx.reply("Session not found.");
+    if (sess.rows[0].completed) return ctx.reply("Reward already claimed for this session.");
+
+    // credit reward (coins)
+    await safeQuery("BEGIN");
+    await safeQuery("UPDATE users SET coins = coins + $1 WHERE telegram_id=$2", [REWARD_PER_TASK_COINS, telegramId]);
+    await safeQuery("UPDATE ad_sessions SET completed=true WHERE session_id=$1", [sessionId]);
+    await safeQuery("INSERT INTO transactions (telegram_id, amount, type, description, created_at) VALUES ($1,$2,'credit',$3,NOW())", [telegramId, REWARD_PER_TASK_COINS, `ad reward ${sessionId}`]);
+    await safeQuery("COMMIT");
+
+    await ctx.reply(`✅ Reward credited: ${REWARD_PER_TASK_COINS} coins added to your wallet.`, mainMenuKeyboard(ADMIN_IDS.includes(String(ctx.from.id))));
+  } catch (e) {
+    try { await safeQuery("ROLLBACK"); } catch (_) {}
+    console.error("submit_session error", e);
+    await ctx.reply("⚠️ Error processing submission. Try again later.");
+  }
+});
+
+// ----------------- Admin actions (keyboard-driven) -----------------
+
+// Admin can toggle performTaskEnabled via a keyboard button in admin panel
+bot.hears(["🛠️ Admin Panel"], async (ctx) => {
+  const sender = String(ctx.from.id);
+  if (!ADMIN_IDS.includes(sender)) {
+    return ctx.reply("⛔ You don't have permission to access admin controls.", mainMenuKeyboard(false));
+  }
+
+  await ctx.reply(
+    "🛠️ Admin Panel — Use keyboard below:",
+    Markup.keyboard([
+      ["🔁 Toggle Perform Task", "📊 View Stats"],
+      ["📢 Broadcast Message", "🧾 Pending Withdrawals"],
+      ["🔙 Back to Menu"],
+    ]).resize()
+  );
+});
+
+// Toggle Perform Task (admin)
+bot.hears("🔁 Toggle Perform Task", async (ctx) => {
+  const sender = String(ctx.from.id);
+  if (!ADMIN_IDS.includes(sender)) {
+    return ctx.reply("⛔ Unauthorized.", mainMenuKeyboard(false));
+  }
+  performTaskEnabled = !performTaskEnabled;
+  await ctx.reply(`🎬 Perform Task is now ${performTaskEnabled ? "✅ ENABLED" : "⛔ DISABLED"}`, mainMenuKeyboard(true));
+});
+
+// View Stats (admin)
+bot.hears("📊 View Stats", async (ctx) => {
+  const sender = String(ctx.from.id);
+  if (!ADMIN_IDS.includes(sender)) return ctx.reply("⛔ Unauthorized.", mainMenuKeyboard(false));
+
+  try {
+    const users = await safeQuery("SELECT COUNT(*)::int AS c FROM users");
+    const views = await safeQuery("SELECT COUNT(*)::int AS c FROM ad_views");
+    await ctx.reply(`📊 Platform Stats\n\nUsers: ${users.rows[0]?.c || 0}\nAd Views: ${views.rows[0]?.c || 0}`, mainMenuKeyboard(true));
+  } catch (e) {
+    console.error("admin stats err", e);
+    await ctx.reply("⚠️ Unable to fetch stats.");
+  }
+});
+
+// Broadcast message (admin begins flow)
+bot.hears("📢 Broadcast Message", async (ctx) => {
+  const sender = String(ctx.from.id);
+  if (!ADMIN_IDS.includes(sender)) return ctx.reply("⛔ Unauthorized.", mainMenuKeyboard(false));
+  ctx.session = ctx.session || {};
+  ctx.session.awaitingBroadcast = true;
+  await ctx.reply("📢 Please type the message to broadcast to all users.", mainMenuKeyboard(true));
+});
+
+// Pending Withdrawals (admin)
+bot.hears("🧾 Pending Withdrawals", async (ctx) => {
+  const sender = String(ctx.from.id);
+  if (!ADMIN_IDS.includes(sender)) return ctx.reply("⛔ Unauthorized.", mainMenuKeyboard(false));
+  try {
+    const r = await safeQuery("SELECT id, telegram_id, amount, account_name, account_number, bank_name, status FROM withdrawals WHERE status='pending' ORDER BY created_at DESC LIMIT 50");
+    if (!r.rows.length) return ctx.reply("No pending withdrawals.", mainMenuKeyboard(true));
+    let msg = "📥 Pending Withdrawals:\n\n";
+    r.rows.forEach((w) => {
+      msg += `ID:${w.id} User:${w.telegram_id} Amount:${w.amount} Bank:${w.bank_name} ${w.account_number}\n\n`;
+    });
+    await ctx.reply(msg, mainMenuKeyboard(true));
+  } catch (e) {
+    console.error("pending withdraws err", e);
+    await ctx.reply("⚠️ Error fetching pending withdrawals.");
+  }
+});
+
+// ----------------- End of Part 2 -----------------
+        
