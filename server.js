@@ -1148,20 +1148,18 @@ bot.on("callback_query", async (ctx) => {
       const sessionId = data.split(":")[1];
       await ctx.answerCbQuery("Progress refreshed — open session page to see updates.");
       return;
-    }
+    } // closes the help handler
   } catch (e) {
     console.error("callback err", e);
     try {
       await ctx.answerCbQuery("Error processing your request");
     } catch (e2) {}
   }
-});
+}); // ✅ closes bot.on("callback_query")
 
 // Start the bot and server safely
-
 async function startBot() {
   try {
-    // Webhook configuration for Render (use BASE_URL)
     const webhookUrl = `${process.env.BASE_URL}/bot${process.env.TELEGRAM_BOT_TOKEN}`;
     await bot.telegram.setWebhook(webhookUrl);
     app.use(bot.webhookCallback(`/bot${process.env.TELEGRAM_BOT_TOKEN}`));
@@ -1177,6 +1175,6 @@ startBot();
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
 
-// Graceful shutdown
 process.once("SIGINT", () => bot.stop("SIGINT"));
 process.once("SIGTERM", () => bot.stop("SIGTERM"));
+
