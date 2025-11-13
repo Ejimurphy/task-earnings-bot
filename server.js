@@ -717,6 +717,77 @@ bot.command("submit_session", async (ctx) => {
   }
 });
 
+// ----------------- Admin actions (keyboard-driven) -----------------
+
+// Admin can toggle performTaskEnabled via a keyboard button in admin panel
+bot.hears(["🛠️ Admin Panel"], async (ctx) => {
+  const sender = String(ctx.from.id);
+  if (!ADMIN_IDS.includes(sender)) {
+    return ctx.reply("⛔ You don't have permission to access admin controls.", mainMenuKeyboard(false));
+  }
+
+  await ctx.reply(
+    "🛠️ Admin Panel — Use keyboard below:",
+    Markup.keyboard([
+      ["🔁 Toggle Perform Task", "📊 View Stats"],
+      ["📢 Broadcast Message", "🧾 Pending Withdrawals"],
+      ["🔙 Back to Menu"],
+    ]).resize()
+  );
+});
+
+// Toggle Perform Task (admin)
+bot.hears("🔁 Toggle Perform Task", async (ctx) => {
+  const sender = String(ctx.from.id);
+  if (!ADMIN_IDS.includes(sender)) {
+    return ctx.reply("⛔ Unauthorized.", mainMenuKeyboard(false));
+  }
+  performTaskEnabled = !performTaskEnabled;
+  await ctx.reply(`🎬 Perform Task is now ${performTaskEnabled ? "✅ ENABLED" : "⛔ DISABLED"}`, mainMenuKeyboard(true));
+});
+
+// View Stats (admin)
+bot.hears("📊 View Stats", async (ctx) => {
+  const sender = String(ctx.from.id);
+  if (!ADMIN_IDS.includes(sender)) return ctx.reply("⛔ Unauthorized.", mainMenuKeyboard(false));
+
+  try {
+    const users = await safeQuery("SELECT COUNT(*)::int AS c FROM users");
+    const views = await safeQuery("SELECT COUNT(*)::int AS c FROM ad_views");
+    await ctx.reply(`📊 Platform Stats\n\nUsers: ${users.rows[0]?.c || 0}\nAd Views: ${views.rows[0]?.c || 0}`, mainMenuKeyboard(true));
+  } catch (e) {
+    console.error("admin stats err", e);
+    await ctx.reply("⚠️ Unable to fetch stats.");
+  }
+});
+
+// Broadcast message (admin begins flow)
+bot.hears("📢 Broadcast Message", async (ctx) => {
+  const sender = String(ctx.from.id);
+  if (!ADMIN_IDS.includes(sender)) return ctx.reply("⛔ Unauthorized.", mainMenuKeyboard(false));
+  ctx.session = ctx.session || {};
+  ctx.session.awaitingBroadcast = true;
+  await ctx.reply("📢 Please type the message to broadcast to all users.", mainMenuKeyboard(true));
+});
+
+// Pending Withdrawals (admin)
+bot.hears("🧾 Pending Withdrawals", async (ctx) => {
+  const sender = String(ctx.from.id);
+  if (!ADMIN_IDS.includes(sender)) return ctx.reply("⛔ Unauthorized.", mainMenuKeyboard(false));
+  try {
+    const r = await safeQuery("SELECT id, telegram_id, amount, account_name, account_number, bank_name, status FROM withdrawals WHERE status='pending' ORDER BY created_at DESC LIMIT 50");
+    if (!r.rows.length) return ctx.reply("No pending withdrawals.", mainMenuKeyboard(true));
+    let msg = "📥 Pending Withdrawals:\n\n";
+    r.rows.forEach((w) => {
+      msg += `ID:${w.id} User:${w.telegram_id} Amount:${w.amount} Bank:${w.bank_name} ${w.account_number}\n\n`;
+    });
+    await ctx.reply(msg, mainMenuKeyboard(true));
+  } catch (e) {
+    console.error("pending withdraws err", e);
+    await ctx.reply("⚠️ Error fetching pending withdrawals.");
+  }
+})
+
 // ---------- Withdraw flow with bank details and checks ----------
 bot.hears("💸 Withdraw", async (ctx) => {
   const telegramId = ctx.from.id;
