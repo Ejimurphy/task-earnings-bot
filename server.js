@@ -719,23 +719,6 @@ process.once("SIGTERM", () => bot.stop("SIGTERM"));
 // server.js — PART 4 of 4 (Final Section)
 // ==========================
 
-// ----------------- Safe Query Helper -----------------
-/**
- * Executes a parameterized SQL query safely.
- * Automatically catches and logs errors without breaking execution.
- * @param {string} text SQL query text
- * @param {Array} params Query parameters
- * @returns {Promise<object>} Query result
- */
-async function safeQuery(text, params = []) {
-  try {
-    return await pool.query(text, params);
-  } catch (err) {
-    console.error("Database query error:", err);
-    throw err;
-  }
-}
-
 // ----------------- Error Handling Middleware -----------------
 bot.catch((err, ctx) => {
   console.error(`Bot Error for ${ctx.updateType}:`, err);
