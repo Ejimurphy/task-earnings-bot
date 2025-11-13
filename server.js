@@ -28,7 +28,6 @@ const ADMIN_IDS = (process.env.ADMIN_TELEGRAM_ID || "5236441213,5725566044")
   .map((x) => x.trim());
 
 const BASE_URL = process.env.BASE_URL || "https://fonpaybot.onrender.com";
-const PORT = process.env.PORT || 3000;
 
 let performTaskEnabled = true;
 
