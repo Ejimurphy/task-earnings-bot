@@ -11,6 +11,7 @@ import pool from "./src/db.js";
 import axios from "axios";
 import fs from "fs";
 import path from "path";
+import { safeQuery } from "./utils.js";
 
 dotenv.config();
 
@@ -33,16 +34,6 @@ let performTaskEnabled = true;
 
 // ---------- Initialize Bot ----------
 const bot = new Telegraf(BOT_TOKEN);
-
-// ---------- Helper: Safe Query ----------
-async function safeQuery(query, params = []) {
-  try {
-    return await pool.query(query, params);
-  } catch (err) {
-    console.error("DB Error:", err);
-    return { rows: [] };
-  }
-}
 
 // ---------- Helper: Main Menu ----------
 function mainMenuKeyboard(isAdmin = false) {
