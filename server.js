@@ -5,7 +5,7 @@
 
 // ---------- Imports ----------
 import express from "express";
-import { Telegraf, Markup } from "telegraf";
+import { Telegraf, Markup, Scenes, session } from "telegraf";
 import dotenv from "dotenv";
 import pool from "./src/db.js";
 import axios from "axios";
