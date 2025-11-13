@@ -540,3 +540,188 @@ bot.hears("🧾 Pending Withdrawals", async (ctx) => {
 
 // ----------------- End of Part 2 -----------------
         
+// ==========================
+// server.js — PART 3 of 4
+// ==========================
+
+// ----------------- Admin: Approve / Decline Withdrawals -----------------
+
+bot.command("approve", async (ctx) => {
+  const sender = String(ctx.from.id);
+  if (!ADMIN_IDS.includes(sender))
+    return ctx.reply("⛔ Unauthorized.", mainMenuKeyboard(false));
+
+  const parts = ctx.message.text.split(" ");
+  if (parts.length < 2)
+    return ctx.reply("Usage: /approve <withdrawal_id>", mainMenuKeyboard(true));
+
+  const wid = parts[1];
+  try {
+    await safeQuery("UPDATE withdrawals SET status='approved', reviewed_at=NOW() WHERE id=$1", [wid]);
+    await ctx.reply(`✅ Withdrawal ${wid} marked as approved.`, mainMenuKeyboard(true));
+
+    // Notify user if possible
+    const w = await safeQuery("SELECT telegram_id, amount FROM withdrawals WHERE id=$1", [wid]);
+    if (w.rows[0]) {
+      const u = w.rows[0];
+      try {
+        await bot.telegram.sendMessage(
+          u.telegram_id,
+          `💵 Your withdrawal of ₦${u.amount} has been approved and processed.`,
+          mainMenuKeyboard(false)
+        );
+      } catch (_) {}
+    }
+  } catch (e) {
+    console.error("approve err", e);
+    await ctx.reply("⚠️ Failed to approve withdrawal.");
+  }
+});
+
+bot.command("decline", async (ctx) => {
+  const sender = String(ctx.from.id);
+  if (!ADMIN_IDS.includes(sender))
+    return ctx.reply("⛔ Unauthorized.", mainMenuKeyboard(false));
+
+  const parts = ctx.message.text.split(" ");
+  if (parts.length < 2)
+    return ctx.reply("Usage: /decline <withdrawal_id>", mainMenuKeyboard(true));
+
+  const wid = parts[1];
+  try {
+    await safeQuery("UPDATE withdrawals SET status='declined', reviewed_at=NOW() WHERE id=$1", [wid]);
+    await ctx.reply(`❌ Withdrawal ${wid} declined.`, mainMenuKeyboard(true));
+  } catch (e) {
+    console.error("decline err", e);
+    await ctx.reply("⚠️ Failed to decline withdrawal.");
+  }
+});
+
+// ----------------- Admin: Export Withdrawals -----------------
+bot.command("export", async (ctx) => {
+  const sender = String(ctx.from.id);
+  if (!ADMIN_IDS.includes(sender))
+    return ctx.reply("⛔ Unauthorized.", mainMenuKeyboard(false));
+
+  try {
+    const r = await safeQuery("SELECT * FROM withdrawals ORDER BY created_at DESC LIMIT 200");
+    if (!r.rows.length)
+      return ctx.reply("No withdrawal data to export.", mainMenuKeyboard(true));
+
+    let csv = "id,telegram_id,amount,status,created_at\n";
+    r.rows.forEach(
+      (x) =>
+        (csv += `${x.id},${x.telegram_id},${x.amount},${x.status},${x.created_at}\n`)
+    );
+
+    const fs = await import("fs");
+    const path = "./withdrawals.csv";
+    fs.writeFileSync(path, csv);
+    await ctx.replyWithDocument({ source: path });
+  } catch (e) {
+    console.error("export err", e);
+    await ctx.reply("⚠️ Failed to export withdrawals.");
+  }
+});
+
+// ----------------- Broadcast Message Handler -----------------
+
+bot.on("text", async (ctx, next) => {
+  ctx.session = ctx.session || {};
+  const awaiting = ctx.session.awaitingBroadcast;
+  if (!awaiting) return next();
+
+  const sender = String(ctx.from.id);
+  if (!ADMIN_IDS.includes(sender)) return next();
+
+  ctx.session.awaitingBroadcast = false;
+  const message = ctx.message.text;
+
+  try {
+    const users = await safeQuery("SELECT telegram_id FROM users");
+    let count = 0;
+    for (const row of users.rows) {
+      try {
+        await bot.telegram.sendMessage(row.telegram_id, `📢 *Broadcast:*\n${message}`, {
+          parse_mode: "Markdown",
+          ...mainMenuKeyboard(false),
+        });
+        count++;
+      } catch (_) {}
+    }
+    await ctx.reply(`✅ Broadcast delivered to ${count} users.`, mainMenuKeyboard(true));
+  } catch (e) {
+    console.error("broadcast err", e);
+    await ctx.reply("⚠️ Failed to broadcast.");
+  }
+});
+
+// ----------------- User: Wallet Balance -----------------
+
+bot.hears(["💼 Wallet Balance", "Wallet Balance"], async (ctx) => {
+  const telegramId = String(ctx.from.id);
+  try {
+    const r = await safeQuery(
+      "SELECT coins FROM users WHERE telegram_id=$1",
+      [telegramId]
+    );
+    const coins = r.rows[0]?.coins || 0;
+    await ctx.reply(
+      `💼 Your wallet balance is ₦${coins}`,
+      mainMenuKeyboard(ADMIN_IDS.includes(telegramId))
+    );
+  } catch (e) {
+    console.error("wallet err", e);
+    await ctx.reply("⚠️ Unable to fetch wallet balance.");
+  }
+});
+
+// ----------------- User: Transaction History -----------------
+bot.hears(["📜 Transactions", "Transactions"], async (ctx) => {
+  const telegramId = String(ctx.from.id);
+  try {
+    const r = await safeQuery(
+      "SELECT amount, type, description, created_at FROM transactions WHERE telegram_id=$1 ORDER BY created_at DESC LIMIT 10",
+      [telegramId]
+    );
+    if (!r.rows.length)
+      return ctx.reply("📭 No transactions yet.", mainMenuKeyboard(false));
+
+    let msg = "📜 *Recent Transactions:*\n\n";
+    r.rows.forEach((t) => {
+      msg += `${t.type === "credit" ? "➕" : "➖"} ₦${t.amount} — ${t.description}\n(${t.created_at.toLocaleString()})\n\n`;
+    });
+    await ctx.reply(msg, { parse_mode: "Markdown", ...mainMenuKeyboard(false) });
+  } catch (e) {
+    console.error("tx history err", e);
+    await ctx.reply("⚠️ Failed to fetch transactions.");
+  }
+});
+
+// ----------------- Express Health & Home Routes -----------------
+app.get("/", (req, res) => res.send("FonPay Task-Earnings Bot is running."));
+app.get("/health", (req, res) => res.send("OK"));
+
+// ----------------- Start Bot with Webhook -----------------
+async function startBot() {
+  try {
+    const webhookUrl = `${process.env.BASE_URL}/bot${process.env.TELEGRAM_BOT_TOKEN}`;
+    await bot.telegram.setWebhook(webhookUrl);
+    app.use(bot.webhookCallback(`/bot${process.env.TELEGRAM_BOT_TOKEN}`));
+    console.log(`🚀 Bot running in webhook mode at: ${webhookUrl}`);
+  } catch (err) {
+    console.error("Bot launch error:", err);
+  }
+}
+startBot();
+
+// ----------------- Express Listener -----------------
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+
+// ----------------- Graceful Shutdown -----------------
+process.once("SIGINT", () => bot.stop("SIGINT"));
+process.once("SIGTERM", () => bot.stop("SIGTERM"));
+
+// ----------------- End of Part 3 -----------------
+      
