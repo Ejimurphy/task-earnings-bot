@@ -728,7 +728,6 @@ bot.catch((err, ctx) => {
 });
 
 // ----------------- Session Management -----------------
-import session from "telegraf/session.js";
 bot.use(session());
 
 // ----------------- Fallback Command -----------------
