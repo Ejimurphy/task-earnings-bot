@@ -14,6 +14,20 @@ export async function safeQuery(query, params = []) {
   }
 }
 
+// ---------- Settings Helpers ----------
+async function setSetting(key, value) {
+  await safeQuery(
+    `INSERT INTO settings (key, value, updated_at) VALUES ($1,$2,NOW())
+     ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
+    [key, value]
+  );
+}
+
+async function getSetting(key) {
+  const r = await safeQuery(`SELECT value FROM settings WHERE key=$1`, [key]);
+  return r.rows[0]?.value ?? null;
+}
+
 // ---------- Utility Functions ----------
 export function coinsToUSD(coins) {
   const rate = Number(process.env.COIN_TO_USD || 0.00005);
