@@ -11,7 +11,7 @@ import pool from "./src/db.js";
 import axios from "axios";
 import fs from "fs";
 import path from "path";
-import { safeQuery } from "./src/utils.js";
+import { safeQuery, setSetting, getSetting } from "./utils.js";
 
 dotenv.config();
 
