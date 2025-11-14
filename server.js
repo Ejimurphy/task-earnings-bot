@@ -441,8 +441,9 @@ bot.action("back_to_main_menu", async (ctx) => {
     {
       parse_mode: "Markdown",
       ...Markup.keyboard([
-        ["🎥 Perform Task", "💰 Wallet"],
-        ["👥 Referral", "📞 Support"],
+    ["💼 Wallet Balance", "🎥 Perform Task"],
+    ["💸 Withdraw", "👥 Refer & Earn"],
+    ["🏦 Change Bank", "🆘 Get Help"],
       ])
         .resize()
         .oneTime(),
