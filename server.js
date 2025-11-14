@@ -797,7 +797,7 @@ bot.hears("🗣 Other", async (ctx) => {
   );
 });
 
-/bot.hears("🔙 Back to Menu", async (ctx) => {
+bot.hears("🔙 Back to Menu", async (ctx) => {
   const adminList = (process.env.ADMIN_TELEGRAM_ID || "")
     .split(",")
     .map((x) => x.trim());
