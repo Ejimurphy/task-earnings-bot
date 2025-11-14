@@ -263,28 +263,33 @@ await initializeDatabase();
 
 
 // ---------- Utilities ----------
-function isAdmin(telegramId) {
-  return ADMIN_IDS.includes(String(telegramId));
-}
-function coinsToUSD(coins) {
-  return (Number(coins) * COIN_TO_USD).toFixed(2);
-}
-function nowSQL() {
-  return new Date().toISOString();
-}
-async function safeQuery(q, params = []) {
-  return pool.query(q, params);
-}
-const ALLOWED_TEXTS = new Set([
-  "💼 Wallet Balance",
-  "🎥 Perform Task",
-  "💸 Withdraw",
-  "👥 Refer & Earn",
-  "🏦 Change Bank",
-  "🆘 Get Help",
-  "Done",
-  "Submit",
-]);
+bot.hears("🔙 Back to Menu", async (ctx) => {
+  const adminList = (process.env.ADMIN_TELEGRAM_ID || "")
+    .split(",")
+    .map((x) => x.trim());
+
+  const isAdmin = adminList.includes(String(ctx.from.id));
+
+  const keyboard = [
+    ["💼 Wallet Balance", "🎥 Perform Task"],
+    ["💸 Withdraw", "👥 Refer & Earn"],
+    ["🏦 Change Bank", "🆘 Get Help"],
+  ];
+
+  // Add admin panel button ONLY for admins
+  if (isAdmin) {
+    keyboard.push(["🛠 Admin Panel"]);
+  }
+
+  await ctx.reply("🏠 *Main Menu*\nSelect an option:", {
+    parse_mode: "Markdown",
+    reply_markup: {
+      keyboard,
+      resize_keyboard: true,
+    },
+  });
+});
+
 
 // ---------- Bot: /start with referral ----------
 bot.start(async (ctx) => {
@@ -345,20 +350,33 @@ bot.command("menu", async (ctx) => {
   await ctx.reply("📍 Choose an option:", mainMenuKeyboard());
 });
 
-// 🧠 Back to Main Menu
-bot.action("back_to_main_menu", async (ctx) => {
-  await ctx.deleteMessage(); // remove admin panel
-  await ctx.reply(
-    "🏠 *Main Menu* — Choose an option below:",
-    {
-      parse_mode: "Markdown",
-      ...Markup.keyboard([
+// 🧠 bot.hears("🔙 Back to Menu", async (ctx) => {
+  const adminList = (process.env.ADMIN_TELEGRAM_ID || "")
+    .split(",")
+    .map((x) => x.trim());
+
+  const isAdmin = adminList.includes(String(ctx.from.id));
+
+  const keyboard = [
     ["💼 Wallet Balance", "🎥 Perform Task"],
     ["💸 Withdraw", "👥 Refer & Earn"],
     ["🏦 Change Bank", "🆘 Get Help"],
-      ])
-        .resize()
-        .oneTime(),
+  ];
+
+  // Add admin panel button ONLY for admins
+  if (isAdmin) {
+    keyboard.push(["🛠 Admin Panel"]);
+  }
+
+  await ctx.reply("🏠 *Main Menu*\nSelect an option:", {
+    parse_mode: "Markdown",
+    reply_markup: {
+      keyboard,
+      resize_keyboard: true,
+    },
+  });
+});
+
     }
   );
 });
@@ -784,27 +802,33 @@ bot.hears("🗣 Other", async (ctx) => {
   );
 });
 
-// ---------- Back to Main Menu ----------
-bot.hears("🔙 Back to Menu", async (ctx) => {
-  try {
-    await ctx.reply(
-      "🏠 *Main Menu* — Choose an option:",
-      {
-        parse_mode: "Markdown",
-        reply_markup: {
-          keyboard: [
-            ["💼 Wallet Balance", "🎥 Perform Task"],
-            ["💸 Withdraw", "👥 Refer & Earn"],
-            ["🏦 Change Bank", "🆘 Get Help"],
-          ],
-          resize_keyboard: true,
-        },
-      }
-    );
-  } catch (e) {
-    console.error("Back to Menu error:", e);
+/bot.hears("🔙 Back to Menu", async (ctx) => {
+  const adminList = (process.env.ADMIN_TELEGRAM_ID || "")
+    .split(",")
+    .map((x) => x.trim());
+
+  const isAdmin = adminList.includes(String(ctx.from.id));
+
+  const keyboard = [
+    ["💼 Wallet Balance", "🎥 Perform Task"],
+    ["💸 Withdraw", "👥 Refer & Earn"],
+    ["🏦 Change Bank", "🆘 Get Help"],
+  ];
+
+  // Add admin panel button ONLY for admins
+  if (isAdmin) {
+    keyboard.push(["🛠 Admin Panel"]);
   }
+
+  await ctx.reply("🏠 *Main Menu*\nSelect an option:", {
+    parse_mode: "Markdown",
+    reply_markup: {
+      keyboard,
+      resize_keyboard: true,
+    },
+  });
 });
+
 
 // ---------- Capture Help Message and Notify Admin ----------
 bot.on("text", async (ctx) => {
