@@ -331,6 +331,19 @@ bot.start(async (ctx) => {
   }
 });
 
+// ---------- Menu keyboard helper ----------
+function mainMenuKeyboard() {
+  return Markup.keyboard([
+    ["💼 Wallet Balance", "🎥 Perform Task"],
+    ["💸 Withdraw", "👥 Refer & Earn"],
+    ["🏦 Change Bank", "🆘 Get Help"],
+  ]).resize();
+}
+
+// ---------- /menu ----------
+bot.command("menu", async (ctx) => {
+  await ctx.reply("📍 Choose an option:", mainMenuKeyboard());
+});
 
 // 🧠 Back to Main Menu
 bot.action("back_to_main_menu", async (ctx) => {
