@@ -984,44 +984,84 @@ bot.command("reply", async (ctx) => {
   }
 });
 
-// ---------------- ADMIN ACTION MESSAGE HANDLER ----------------
-bot.on("text", async (ctx) => {
-  const telegramId = String(ctx.from.id);
-  const adminIds = process.env.ADMIN_TELEGRAM_ID.split(",").map((id) => id.trim());
-  ctx.session = ctx.session || {};
+// ---------- ADMIN PANEL (Using reply keyboard) ----------
+bot.hears("/admin", async (ctx) => {
+  const adminList = (process.env.ADMIN_TELEGRAM_ID || "")
+    .split(",")
+    .map((x) => x.trim());
 
-  if (!adminIds.includes(telegramId)) return; // only handle for admin
+  if (!adminList.includes(String(ctx.from.id))) {
+    return ctx.reply("❌ You are not authorized to access the admin panel.");
+  }
 
-  // 📢 Broadcast
-  if (ctx.session.awaitingBroadcast) {
-    ctx.session.awaitingBroadcast = false;
-    const message = ctx.message.text;
-    const users = await safeQuery("SELECT telegram_id FROM users");
-    let sent = 0;
-    for (const u of users.rows) {
-      try {
-        await bot.telegram.sendMessage(u.telegram_id, message);
-        sent++;
-      } catch {}
+  const text = `
+🛠️ *FonPay Task-Earnings Admin Panel*
+
+Welcome, *Admin* 👑  
+Manage system settings and monitor platform activities.
+
+Choose an option below:
+`;
+
+  await ctx.replyWithPhoto(
+    { url: "https://i.ibb.co/4d1w2kD/fonpay-logo.png" },
+    {
+      caption: text,
+      parse_mode: "Markdown",
+      reply_markup: {
+        keyboard: [
+          ["🟢 Enable Perform Task", "🔴 Disable Perform Task"],
+          ["📢 Broadcast Message", "📊 View Stats"],
+          ["🚫 Ban User", "✅ Unban User"],
+          ["🔙 Back to Menu"],
+        ],
+        resize_keyboard: true,
+      },
     }
-    return ctx.reply(`✅ Broadcast sent to ${sent} users.`);
-  }
+  );
+});
 
-  // 🚫 Ban
-  if (ctx.session.awaitingBan) {
-    ctx.session.awaitingBan = false;
-    const targetId = ctx.message.text.trim();
-    await safeQuery("UPDATE users SET is_banned=true WHERE telegram_id=$1", [targetId]);
-    return ctx.reply(`🚫 User ${targetId} has been banned.`);
-  }
+// Enable Perform Task
+bot.hears("🟢 Enable Perform Task", async (ctx) => {
+  await setSetting("perform_task_enabled", "on");
+  await ctx.reply("✅ Perform Task feature has been ENABLED.");
+});
 
-  // ✅ Unban
-  if (ctx.session.awaitingUnban) {
-    ctx.session.awaitingUnban = false;
-    const targetId = ctx.message.text.trim();
-    await safeQuery("UPDATE users SET is_banned=false WHERE telegram_id=$1", [targetId]);
-    return ctx.reply(`✅ User ${targetId} has been unbanned.`);
-  }
+// Disable Perform Task
+bot.hears("🔴 Disable Perform Task", async (ctx) => {
+  await setSetting("perform_task_enabled", "off");
+  await ctx.reply("🚫 Perform Task feature has been DISABLED.");
+});
+
+// Broadcast Message
+bot.hears("📢 Broadcast Message", async (ctx) => {
+  ctx.session = ctx.session || {};
+  ctx.session.awaitingBroadcast = true;
+  await ctx.reply("📢 Send the message to broadcast to all users.");
+});
+
+// Ban User
+bot.hears("🚫 Ban User", async (ctx) => {
+  ctx.session = ctx.session || {};
+  ctx.session.awaitingBan = true;
+  await ctx.reply("🚫 Send the Telegram ID of the user you want to ban.");
+});
+
+// Unban User
+bot.hears("✅ Unban User", async (ctx) => {
+  ctx.session = ctx.session || {};
+  ctx.session.awaitingUnban = true;
+  await ctx.reply("✅ Send the Telegram ID to unban.");
+});
+
+// View Stats
+bot.hears("📊 View Stats", async (ctx) => {
+  const users = await safeQuery("SELECT COUNT(*) FROM users");
+  const views = await safeQuery("SELECT COUNT(*) FROM ad_views");
+
+  await ctx.replyWithMarkdown(
+    `📊 *Platform Stats:*\n\n👥 Users: ${users.rows[0].count}\n🎥 Ad Views: ${views.rows[0].count}`
+  );
 });
 
 // ---------- Admin: list pending withdrawals ----------
