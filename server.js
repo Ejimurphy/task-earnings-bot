@@ -377,10 +377,6 @@ bot.command("menu", async (ctx) => {
   });
 });
 
-    }
-  );
-});
-
 // ---------- Wallet balance (coins + USD + cash) ----------
 bot.hears("💼 Wallet Balance", async (ctx) => {
   const telegramId = ctx.from.id;
@@ -1171,6 +1167,20 @@ bot.on("callback_query", async (ctx) => {
       await ctx.answerCbQuery("Error processing your request");
     } catch (e2) {}
   }
+});
+
+      // Admin menu Activate 
+bot.hears("🛠 Admin Panel", async (ctx) => {
+  const adminList = (process.env.ADMIN_TELEGRAM_ID || "")
+    .split(",")
+    .map((x) => x.trim());
+
+  if (!adminList.includes(String(ctx.from.id))) {
+    return ctx.reply("❌ You are not authorized to access the admin panel.");
+  }
+
+  // Trigger the admin panel (same as /admin)
+  return bot.emit("text", { ...ctx.update, message: { ...ctx.message, text: "/admin" } });
 });
 
 // Start the bot and server safely
