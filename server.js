@@ -375,7 +375,6 @@ bot.command("menu", async (ctx) => {
       resize_keyboard: true,
     },
   });
-});
 
 // ---------- Wallet balance (coins + USD + cash) ----------
 bot.hears("💼 Wallet Balance", async (ctx) => {
