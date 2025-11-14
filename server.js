@@ -872,6 +872,28 @@ bot.hears("🗣 Other", async (ctx) => {
   );
 });
 
+// ---------- Back to Main Menu ----------
+bot.hears("🔙 Back to Menu", async (ctx) => {
+  try {
+    await ctx.reply(
+      "🏠 *Main Menu* — Choose an option:",
+      {
+        parse_mode: "Markdown",
+        reply_markup: {
+          keyboard: [
+            ["💼 Wallet Balance", "🎥 Perform Task"],
+            ["💸 Withdraw", "👥 Refer & Earn"],
+            ["🏦 Change Bank", "🆘 Get Help"],
+          ],
+          resize_keyboard: true,
+        },
+      }
+    );
+  } catch (e) {
+    console.error("Back to Menu error:", e);
+  }
+});
+
 // ---------- Capture Help Message and Notify Admin ----------
 bot.on("text", async (ctx) => {
   const telegramId = ctx.from.id;
