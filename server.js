@@ -621,9 +621,7 @@ bot.hears(["🛠️ Admin Panel"], async (ctx) => {
     Markup.keyboard([
       ["🔁 Toggle Perform Task", "📊 View Stats"],
       ["📢 Broadcast Message", "🧾 Pending Withdrawals"],
-      ["🚫 Ban User", "admin_ban","✅ Unban User", "admin_unban"],
-      ["🔁 Toggle Perform Task", "📊 View Stats"],
-      ["📢 Broadcast Message", "🧾 Pending Withdrawals"],
+      ["🚫 Ban User","✅ Unban User"],
       ["🔙 Back to Menu"],
     ]).resize()
   );
