@@ -345,13 +345,26 @@ bot.start(async (ctx) => {
 });
 
 // ---------- Menu keyboard helper ----------
-function mainMenuKeyboard() {
-  return Markup.keyboard([
+function mainMenuKeyboard(ctx) {
+  const telegramId = String(ctx.from.id);
+
+  // Your admin IDs
+  const adminIds = ["5236441213", "5725566044"];
+
+  let menu = [
     ["💼 Wallet Balance", "🎥 Perform Task"],
     ["💸 Withdraw", "👥 Refer & Earn"],
     ["🏦 Change Bank", "🆘 Get Help"],
-  ]).resize();
+  ];
+
+  // If admin, append admin panel button
+  if (adminIds.includes(telegramId)) {
+    menu.push(["🛠 Admin Panel"]);
+  }
+
+  return Markup.keyboard(menu).resize();
 }
+
 
 // ---------- /menu ----------
 bot.command("menu", async (ctx) => {
