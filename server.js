@@ -812,10 +812,10 @@ bot.on("text", async (ctx, next) => {
     }
   }
 
-  return next();
+    // If not matched, pass to next() so other handlers can process (e.g., unknown command)
+  return next();
 });
-
-
+          
 // ---------- Get Help ----------
 bot.hears("🆘 Get Help", async (ctx) => {
   try {
