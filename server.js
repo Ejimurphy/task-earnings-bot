@@ -708,60 +708,36 @@ bot.on("text", async (ctx, next) => {
     }
   }
 
-  // ---------- Change bank flow: old|new format ----------
-if (text.includes(",") && !text.includes("|") && text.split(",").length === 3) {
-    const [bankName, accountNumber, accountName] = text.split(",").map(s => s.trim());
-
-    // Validate account number
-    if (!/^\d+$/.test(accountNumber)) {
-        return ctx.reply("⚠️ Invalid account number. Use digits only.");
-    }
-
-    try {
-        // Check existing bank
-        const r = await safeQuery(
-            "SELECT bank_name, bank_account_number, bank_account_name FROM users WHERE telegram_id=$1",
-            [telegramId]
-        );
-        const user = r.rows[0];
-
-        // 🚫 If user already has a bank saved, DO NOT allow overwrite without old|new format
-        if (user && user.bank_account_number) {
-            return ctx.reply(
-                "⚠️ Withdrawal bank details already exist.\n\n" +
-                "To add a new bank, enter both old and new bank details in this format:\n\n" +
+   // ---------- Save or Change Bank Details ----------
 bot.on("text", async (ctx, next) => {
   const text = (ctx.message.text || "").trim();
   const telegramId = ctx.from.id;
 
-  // ---------- Change bank flow (old|new format) ----------
-  if (text.includes("|")) {
+  // ============ CHANGE BANK (strict old | new format) ============
+  if (text.includes("|") && text.split("|").length === 2) {
+    const [oldStr, newStr] = text.split("|").map(s => s.trim());
+    if (!oldStr.includes(",") || !newStr.includes(",")) return next();
+
+    const [oldBank, oldAcc, oldName] = oldStr.split(",").map(s => s.trim());
+    const [newBank, newAcc, newName] = newStr.split(",").map(s => s.trim());
+
     try {
-      const [oldPart, newPart] = text.split("|").map(x => x.trim());
-
-      const oldArr = oldPart.split(",").map(s => s.trim());
-      const newArr = newPart.split(",").map(s => s.trim());
-
-      if (oldArr.length !== 3 || newArr.length !== 3) {
-        return ctx.reply("⚠️ Format incorrect. Use:\n\noldBank,oldAcc,oldName | newBank,newAcc,newName");
-      }
-
-      const [oldBank, oldAcc, oldName] = oldArr;
-      const [newBank, newAcc, newName] = newArr;
-
-      const r = await safeQuery("SELECT * FROM users WHERE telegram_id=$1", [telegramId]);
+      const r = await safeQuery(
+        "SELECT bank_name, bank_account_number, bank_account_name FROM users WHERE telegram_id=$1",
+        [telegramId]
+      );
       const user = r.rows[0];
 
       if (!user || !user.bank_account_number) {
-        return ctx.reply("⚠️ No existing bank details found. Add your bank in this format:\n\nBankName,AccountNumber,AccountName");
+        return ctx.reply("⚠️ No existing bank details found. Please add your bank first.");
       }
 
+      // Old details must match
       if (
-        user.bank_name !== oldBank ||
-        user.bank_account_number !== oldAcc ||
-        user.bank_account_name !== oldName
+        (user.bank_name || "").toLowerCase() !== (oldBank || "").toLowerCase() ||
+        (user.bank_account_number || "") !== oldAcc
       ) {
-        return ctx.reply("❌ Old bank details do not match our records.");
+        return ctx.reply("🚫 Old bank details do not match our records. New bank NOT saved.");
       }
 
       await safeQuery(
@@ -769,14 +745,14 @@ bot.on("text", async (ctx, next) => {
         [newBank, newAcc, newName, telegramId]
       );
 
-      return ctx.reply("✅ Bank details updated successfully.");
+      return ctx.reply("✅ Bank account changed successfully.");
     } catch (e) {
-      console.error("change bank err", e);
-      return ctx.reply("⚠️ Error updating bank details.");
+      console.error("change bank error", e);
+      return ctx.reply("⚠️ Error changing bank details.");
     }
   }
 
-  // ---------- First-time bank addition ONLY ----------
+  // ============ FIRST-TIME BANK ADD ONLY ============
   if (text.includes(",") && !text.includes("|") && text.split(",").length === 3) {
     const [bankName, accountNumber, accountName] = text.split(",").map(s => s.trim());
 
@@ -785,36 +761,39 @@ bot.on("text", async (ctx, next) => {
     }
 
     try {
-      const r = await safeQuery("SELECT bank_account_number FROM users WHERE telegram_id=$1", [telegramId]);
+      const r = await safeQuery(
+        "SELECT bank_account_number FROM users WHERE telegram_id=$1",
+        [telegramId]
+      );
       const user = r.rows[0];
 
-      // 🚫 User already has a bank — require old|new format
+      // Already has bank → must use old|new format
       if (user && user.bank_account_number) {
         return ctx.reply(
           "⚠️ Withdrawal bank details already exist.\n\n" +
-          "To add a new bank, enter both old and new bank details in this format:\n\n" +
+          "To add a *new bank*, please send BOTH old and new details:\n\n" +
           "*oldBank,oldAcc,oldName | newBank,newAcc,newName*",
           { parse_mode: "Markdown" }
         );
       }
 
-      // First time add
+      // First-time save
       await safeQuery(
         "UPDATE users SET bank_name=$1, bank_account_number=$2, bank_account_name=$3 WHERE telegram_id=$4",
         [bankName, accountNumber, accountName, telegramId]
       );
 
       return ctx.reply("✅ Bank account saved. You can now request withdrawals.");
-
     } catch (e) {
-      console.error("save bank err", e);
+      console.error("bank save error", e);
       return ctx.reply("⚠️ Error saving bank details.");
     }
   }
 
-    // If not matched, pass to next() so other handlers can process (e.g., unknown command)
-  return next();
+  // Allow other handlers to continue
+  return next();
 });
+
           
 // ---------- Get Help ----------
 bot.hears("🆘 Get Help", async (ctx) => {
