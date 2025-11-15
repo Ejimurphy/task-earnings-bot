@@ -298,6 +298,43 @@ bot.hears("🔙 Back to Menu", async (ctx) => {
   });
 });
 
+// ---------- Admin Panel Button (from main menu) ----------
+bot.hears("🛠 Admin Panel", async (ctx) => {
+  const adminList = (process.env.ADMIN_TELEGRAM_ID || "")
+    .split(",")
+    .map((x) => x.trim());
+
+  if (!adminList.includes(String(ctx.from.id))) {
+    return ctx.reply("❌ You are not authorized to access the admin panel.");
+  }
+
+  const text = `
+🛠️ *FonPay Task-Earnings Admin Panel*
+
+Welcome, *Admin* 👑  
+Manage system settings and monitor platform activities.
+
+Choose an option below:
+`;
+
+  await ctx.replyWithPhoto(
+    { url: "https://i.ibb.co/4d1w2kD/fonpay-logo.png" },
+    {
+      caption: text,
+      parse_mode: "Markdown",
+      reply_markup: {
+        keyboard: [
+          ["🟢 Enable Perform Task", "🔴 Disable Perform Task"],
+          ["📢 Broadcast Message", "📊 View Stats"],
+          ["🚫 Ban User", "✅ Unban User"],
+          ["🔙 Back to Menu"],
+        ],
+        resize_keyboard: true,
+      },
+    }
+  );
+});
+
 
 // ---------- Bot: /start with referral ----------
 bot.start(async (ctx) => {
