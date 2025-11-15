@@ -1,6 +1,7 @@
 import express from "express";
 import dotenv from "dotenv";
 import { Telegraf, Markup, session } from "telegraf";
+import { safeQuery } from "./src/utils.js";
 
 let performTaskEnabled = true; // ✅ Default: ON
 
