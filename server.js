@@ -350,32 +350,6 @@ bot.command("menu", async (ctx) => {
   await ctx.reply("📍 Choose an option:", mainMenuKeyboard());
 });
 
-// 🧠 bot.hears("🔙 Back to Menu", async (ctx) => {
-  const adminList = (process.env.ADMIN_TELEGRAM_ID || "")
-    .split(",")
-    .map((x) => x.trim());
-
-  const isAdmin = adminList.includes(String(ctx.from.id));
-
-  const keyboard = [
-    ["💼 Wallet Balance", "🎥 Perform Task"],
-    ["💸 Withdraw", "👥 Refer & Earn"],
-    ["🏦 Change Bank", "🆘 Get Help"],
-  ];
-
-  // Add admin panel button ONLY for admins
-  if (isAdmin) {
-    keyboard.push(["🛠 Admin Panel"]);
-  }
-
-  await ctx.reply("🏠 *Main Menu*\nSelect an option:", {
-    parse_mode: "Markdown",
-    reply_markup: {
-      keyboard,
-      resize_keyboard: true,
-    },
-  });
-
 // ---------- Wallet balance (coins + USD + cash) ----------
 bot.hears("💼 Wallet Balance", async (ctx) => {
   const telegramId = ctx.from.id;
