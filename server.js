@@ -681,32 +681,6 @@ bot.hears(["🏦 Change Bank", "Change Bank", "Change bank"], async (ctx) => {
 bot.on("text", async (ctx, next) => {
   const text = (ctx.message.text || "").trim();
   const telegramId = ctx.from.id;
-  // bank add pattern
-  if (text.includes(",") && text.split(",").length === 3) {
-    const [bankName, accountNumber, accountName] = text.split(",").map(s => s.trim());
-    // simple validation accountNumber digits
-    if (!/^\d+$/.test(accountNumber)) {
-      return ctx.reply("⚠️ Invalid account number. Use digits only.");
-    }
-    try {
-      // check if user has existing bank
-      const r = await safeQuery("SELECT bank_account_number FROM users WHERE telegram_id=$1", [telegramId]);
-      if (r.rows[0] && r.rows[0].bank_account_number) {
-        // this is a bank change request — require old|new? we implemented change flow via Change Bank option below
-        await safeQuery("UPDATE users SET bank_name=$1, bank_account_number=$2, bank_account_name=$3 WHERE telegram_id=$4", [bankName, accountNumber, accountName, telegramId]);
-        await ctx.reply("✅ Bank account updated successfully.");
-        return;
-      } else {
-        // first time add
-        await safeQuery("UPDATE users SET bank_name=$1, bank_account_number=$2, bank_account_name=$3 WHERE telegram_id=$4", [bankName, accountNumber, accountName, telegramId]);
-        await ctx.reply("✅ Bank account saved. You can now request withdrawals.");
-        return;
-      }
-    } catch (e) {
-      console.error("save bank err", e);
-      return ctx.reply("⚠️ Error saving bank details.");
-    }
-  }
 
   // ============ CHANGE BANK (strict old | new format) ============
   if (text.includes("|") && text.split("|").length === 2) {
@@ -727,9 +701,8 @@ bot.on("text", async (ctx, next) => {
         return ctx.reply("⚠️ No existing bank details found. Please add your bank first.");
       }
 
-      // Old details must match
       if (
-        (user.bank_name || "").toLowerCase() !== (oldBank || "").toLowerCase() ||
+        (user.bank_name || "").toLowerCase() !== oldBank.toLowerCase() ||
         (user.bank_account_number || "") !== oldAcc
       ) {
         return ctx.reply("🚫 Old bank details do not match our records. New bank NOT saved.");
@@ -762,7 +735,6 @@ bot.on("text", async (ctx, next) => {
       );
       const user = r.rows[0];
 
-      // Already has bank → must use old|new format
       if (user && user.bank_account_number) {
         return ctx.reply(
           "⚠️ Withdrawal bank details already exist.\n\n" +
@@ -772,7 +744,6 @@ bot.on("text", async (ctx, next) => {
         );
       }
 
-      // First-time save
       await safeQuery(
         "UPDATE users SET bank_name=$1, bank_account_number=$2, bank_account_name=$3 WHERE telegram_id=$4",
         [bankName, accountNumber, accountName, telegramId]
@@ -785,10 +756,8 @@ bot.on("text", async (ctx, next) => {
     }
   }
 
-  // Allow other handlers to continue
   return next();
 });
-
           
 // ---------- Get Help ----------
 bot.hears("🆘 Get Help", async (ctx) => {
