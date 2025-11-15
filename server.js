@@ -196,8 +196,8 @@ bot.hears("🔙 Back to Menu", async (ctx) => {
   });
 });
 
-// ---------- Admin Panel Button (from main menu) ----------
-bot.hears("🛠 Admin Panel", async (ctx) => {
+// ---------- ADMIN PANEL (Using reply keyboard) ----------
+bot.hears("/admin", async (ctx) => {
   const adminList = (process.env.ADMIN_TELEGRAM_ID || "")
     .split(",")
     .map((x) => x.trim());
@@ -252,42 +252,6 @@ bot.command("addadmin", async (ctx) => {
 
   ADMINS.add(newAdminId);
   await ctx.reply(`✅ Admin with ID ${newAdminId} added successfully.`);
-});
-
-// ---------- Admin Toggle Perform Task ----------
-bot.command("toggle_tasks", async (ctx) => {
-  const adminIds = (process.env.ADMIN_TELEGRAM_ID || "")
-    .split(",")
-    .map((x) => x.trim());
-
-  if (!adminIds.includes(String(ctx.from.id))) {
-    return ctx.reply("⚠️ You are not authorized to use this command.");
-  }
-
-  performTaskEnabled = !performTaskEnabled;
-  const status = performTaskEnabled ? "✅ ENABLED" : "⛔ DISABLED";
-
-  await ctx.reply(`🎥 Perform Task feature is now *${status}*`, { parse_mode: "Markdown" });
-});
-
-bot.command("toggle_tasks", async (ctx) => {
-  const adminIds = (process.env.ADMIN_TELEGRAM_ID || "")
-    .split(",")
-    .map((x) => x.trim());
-
-  if (!adminIds.includes(String(ctx.from.id))) {
-    return ctx.reply("⚠️ You are not authorized to use this command.");
-  }
-
-  performTaskEnabled = !performTaskEnabled;
-  const status = performTaskEnabled ? "enabled" : "disabled";
-
-  await setSetting("perform_task", status);
-
-  await ctx.reply(
-    `🎥 Perform Task feature is now *${status.toUpperCase()}*`,
-    { parse_mode: "Markdown" }
-  );
 });
 
 // ---------- Admin Check Task Status ----------
@@ -1106,44 +1070,6 @@ bot.command("reply", async (ctx) => {
     await ctx.reply("⚠️ Unexpected error while sending reply.");
   }
 });
-
-// ---------- ADMIN PANEL (Using reply keyboard) ----------
-bot.hears("/admin", async (ctx) => {
-  const adminList = (process.env.ADMIN_TELEGRAM_ID || "")
-    .split(",")
-    .map((x) => x.trim());
-
-  if (!adminList.includes(String(ctx.from.id))) {
-    return ctx.reply("❌ You are not authorized to access the admin panel.");
-  }
-
-  const text = `
-🛠️ *FonPay Task-Earnings Admin Panel*
-
-Welcome, *Admin* 👑  
-Manage system settings and monitor platform activities.
-
-Choose an option below:
-`;
-
-  await ctx.replyWithPhoto(
-    { url: "https://i.ibb.co/4d1w2kD/fonpay-logo.png" },
-    {
-      caption: text,
-      parse_mode: "Markdown",
-      reply_markup: {
-        keyboard: [
-          ["🟢 Enable Perform Task", "🔴 Disable Perform Task"],
-          ["📢 Broadcast Message", "📊 View Stats"],
-          ["🚫 Ban User", "✅ Unban User"],
-          ["🔙 Back to Menu"],
-        ],
-        resize_keyboard: true,
-      },
-    }
-  );
-});
-
 
 // ---------- Invalid text handler: restrict to allowed texts or commands ----------
 bot.on("text", async (ctx) => {
