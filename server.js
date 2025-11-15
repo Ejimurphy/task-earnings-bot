@@ -335,6 +335,141 @@ bot.command("admins", async (ctx) => {
   await ctx.reply(`👑 *Current Admins:*\n${list}`, { parse_mode: "Markdown" });
 });
 
+// Enable Perform Task
+bot.hears("🟢 Enable Perform Task", async (ctx) => {
+  await setSetting("perform_task_enabled", "on");
+  await ctx.reply("✅ Perform Task feature has been ENABLED.");
+});
+
+// Disable Perform Task
+bot.hears("🔴 Disable Perform Task", async (ctx) => {
+  await setSetting("perform_task_enabled", "off");
+  await ctx.reply("🚫 Perform Task feature has been DISABLED.");
+});
+
+// Broadcast Message
+bot.hears("📢 Broadcast Message", async (ctx) => {
+  ctx.session = ctx.session || {};
+  ctx.session.awaitingBroadcast = true;
+  await ctx.reply("📢 Send the message to broadcast to all users.");
+});
+
+// Ban User
+bot.hears("🚫 Ban User", async (ctx) => {
+  ctx.session = ctx.session || {};
+  ctx.session.awaitingBan = true;
+  await ctx.reply("🚫 Send the Telegram ID of the user you want to ban.");
+});
+
+// Unban User
+bot.hears("✅ Unban User", async (ctx) => {
+  ctx.session = ctx.session || {};
+  ctx.session.awaitingUnban = true;
+  await ctx.reply("✅ Send the Telegram ID to unban.");
+});
+
+// View Stats
+bot.hears("📊 View Stats", async (ctx) => {
+  const users = await safeQuery("SELECT COUNT(*) FROM users");
+  const views = await safeQuery("SELECT COUNT(*) FROM ad_views");
+
+  await ctx.replyWithMarkdown(
+    `📊 *Platform Stats:*\n\n👥 Users: ${users.rows[0].count}\n🎥 Ad Views: ${views.rows[0].count}`
+  );
+});
+
+// ---------- Admin: list pending withdrawals ----------
+bot.command("pending_withdrawals", async (ctx) => {
+  if (!isAdmin(ctx.from.id)) return ctx.reply("❌ You are not authorized.");
+  try {
+    const r = await safeQuery("SELECT id, telegram_id, coins, usd, bank_name, account_name, account_number, status FROM withdrawals WHERE status='pending' ORDER BY requested_at DESC");
+    if (r.rows.length === 0) return ctx.reply("No pending withdrawals.");
+    let msg = "📥 Pending Withdrawals:\n\n";
+    for (const w of r.rows) {
+      msg += `ID:${w.id} User:${w.telegram_id} Coins:${w.coins} USD:${w.usd} Bank:${w.bank_name} ${w.account_number}\n\n`;
+    }
+    await ctx.reply(msg);
+  } catch (e) {
+    console.error("pending_withdrawals err", e);
+    await ctx.reply("Error fetching pending withdrawals.");
+  }
+});
+
+// ---------- Admin approve/decline ----------
+bot.command("approve_withdraw", async (ctx) => {
+  if (!isAdmin(ctx.from.id)) return ctx.reply("❌ You are not authorized.");
+  const parts = (ctx.message.text || "").split(" ").filter(Boolean);
+  const id = parts[1];
+  if (!id) return ctx.reply("Usage: /approve_withdraw <withdrawal_id>");
+  try {
+    const r = await safeQuery("UPDATE withdrawals SET status='paid', processed_at=NOW() WHERE id=$1 AND status='pending' RETURNING *", [id]);
+    if (r.rowCount === 0) return ctx.reply("Withdrawal not found or already processed.");
+    const w = r.rows[0];
+    await safeQuery("INSERT INTO transactions (telegram_id, type, coins, amount, meta) VALUES ($1,'withdraw_paid',$2,$3,$4)", [w.telegram_id, w.coins, w.usd, JSON.stringify({ withdrawalId: id })]);
+    try { await bot.telegram.sendMessage(w.telegram_id, `✅ Your withdrawal #${id} of ${w.coins} coins (~$${w.usd}) has been approved and paid.`); } catch (e) {}
+    return ctx.reply(`✅ Withdrawal ${id} marked as paid.`);
+  } catch (e) {
+    console.error("approve withdraw err", e);
+    return ctx.reply("Error approving withdrawal.");
+  }
+});
+
+bot.command("decline_withdraw", async (ctx) => {
+  if (!isAdmin(ctx.from.id)) return ctx.reply("❌ You are not authorized.");
+  const parts = (ctx.message.text || "").split(" ").filter(Boolean);
+  const id = parts[1];
+  const reason = parts.slice(2).join(" ") || "No reason provided";
+  if (!id) return ctx.reply("Usage: /decline_withdraw <withdrawal_id> <reason>");
+  try {
+    const r = await safeQuery("UPDATE withdrawals SET status='declined', admin_note=$1, processed_at=NOW() WHERE id=$2 AND status='pending' RETURNING *", [reason, id]);
+    if (r.rowCount === 0) return ctx.reply("Withdrawal not found or already processed.");
+    const w = r.rows[0];
+    // refund coins to user
+    await safeQuery("UPDATE users SET coins = coins + $1 WHERE telegram_id=$2", [w.coins, w.telegram_id]);
+    await safeQuery("INSERT INTO transactions (telegram_id, type, coins, meta) VALUES ($1,'withdraw_declined',$2,$3)", [w.telegram_id, w.coins, JSON.stringify({ withdrawalId: id, reason })]);
+    try { await bot.telegram.sendMessage(w.telegram_id, `❌ Your withdrawal #${id} was declined. Reason: ${reason}`); } catch (e) {}
+    return ctx.reply(`✅ Withdrawal ${id} declined and coins refunded to user.`);
+  } catch (e) {
+    console.error("decline withdraw err", e);
+    return ctx.reply("Error declining withdrawal.");
+  }
+});
+
+// ---------- Admin: export withdrawals CSV ----------
+bot.command("export_withdrawals", async (ctx) => {
+  if (!isAdmin(ctx.from.id)) return ctx.reply("❌ You are not authorized.");
+  try {
+    const r = await safeQuery("SELECT * FROM withdrawals ORDER BY requested_at DESC");
+    // build CSV
+    const header = Object.keys(r.rows[0] || {}).join(",");
+    const lines = [header];
+    for (const row of r.rows) lines.push(Object.values(row).join(","));
+    const csv = lines.join("\n");
+    await ctx.replyWithDocument({ source: Buffer.from(csv, "utf8"), filename: "withdrawals.csv" });
+  } catch (e) {
+    console.error("export err", e);
+    await ctx.reply("Error exporting withdrawals.");
+  }
+});
+
+// ---------- Transactions last 7 days for a user ----------
+bot.command("transactions", async (ctx) => {
+  if (!isAdmin(ctx.from.id)) return ctx.reply("❌ You are not authorized.");
+  const parts = (ctx.message.text || "").split(" ").filter(Boolean);
+  const target = parts[1];
+  if (!target) return ctx.reply("Usage: /transactions <telegram_id>");
+  try {
+    const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    const ads = await safeQuery("SELECT * FROM ad_views WHERE telegram_id=$1 AND created_at >= $2 ORDER BY created_at DESC LIMIT 200", [target, since]);
+    const w = await safeQuery("SELECT * FROM withdrawals WHERE telegram_id=$1 AND requested_at >= $2 ORDER BY requested_at DESC LIMIT 50", [target, since]);
+    let msg = `Transactions for ${target} (7 days)\n\nAds watched: ${ads.rowCount}\nWithdrawals: ${w.rowCount}\n\nRecent withdrawals:\n`;
+    for (const row of w.rows) msg += `${row.id} - ${row.status} - ${row.coins} coins - ${row.requested_at}\n`;
+    await ctx.reply(msg);
+  } catch (e) {
+    console.error("transactions err", e);
+    await ctx.reply("Error fetching transactions.");
+  }
+});
 
 // ---------- Bot: /start with referral ----------
 bot.start(async (ctx) => {
@@ -1009,141 +1144,6 @@ Choose an option below:
   );
 });
 
-// Enable Perform Task
-bot.hears("🟢 Enable Perform Task", async (ctx) => {
-  await setSetting("perform_task_enabled", "on");
-  await ctx.reply("✅ Perform Task feature has been ENABLED.");
-});
-
-// Disable Perform Task
-bot.hears("🔴 Disable Perform Task", async (ctx) => {
-  await setSetting("perform_task_enabled", "off");
-  await ctx.reply("🚫 Perform Task feature has been DISABLED.");
-});
-
-// Broadcast Message
-bot.hears("📢 Broadcast Message", async (ctx) => {
-  ctx.session = ctx.session || {};
-  ctx.session.awaitingBroadcast = true;
-  await ctx.reply("📢 Send the message to broadcast to all users.");
-});
-
-// Ban User
-bot.hears("🚫 Ban User", async (ctx) => {
-  ctx.session = ctx.session || {};
-  ctx.session.awaitingBan = true;
-  await ctx.reply("🚫 Send the Telegram ID of the user you want to ban.");
-});
-
-// Unban User
-bot.hears("✅ Unban User", async (ctx) => {
-  ctx.session = ctx.session || {};
-  ctx.session.awaitingUnban = true;
-  await ctx.reply("✅ Send the Telegram ID to unban.");
-});
-
-// View Stats
-bot.hears("📊 View Stats", async (ctx) => {
-  const users = await safeQuery("SELECT COUNT(*) FROM users");
-  const views = await safeQuery("SELECT COUNT(*) FROM ad_views");
-
-  await ctx.replyWithMarkdown(
-    `📊 *Platform Stats:*\n\n👥 Users: ${users.rows[0].count}\n🎥 Ad Views: ${views.rows[0].count}`
-  );
-});
-
-// ---------- Admin: list pending withdrawals ----------
-bot.command("pending_withdrawals", async (ctx) => {
-  if (!isAdmin(ctx.from.id)) return ctx.reply("❌ You are not authorized.");
-  try {
-    const r = await safeQuery("SELECT id, telegram_id, coins, usd, bank_name, account_name, account_number, status FROM withdrawals WHERE status='pending' ORDER BY requested_at DESC");
-    if (r.rows.length === 0) return ctx.reply("No pending withdrawals.");
-    let msg = "📥 Pending Withdrawals:\n\n";
-    for (const w of r.rows) {
-      msg += `ID:${w.id} User:${w.telegram_id} Coins:${w.coins} USD:${w.usd} Bank:${w.bank_name} ${w.account_number}\n\n`;
-    }
-    await ctx.reply(msg);
-  } catch (e) {
-    console.error("pending_withdrawals err", e);
-    await ctx.reply("Error fetching pending withdrawals.");
-  }
-});
-
-// ---------- Admin approve/decline ----------
-bot.command("approve_withdraw", async (ctx) => {
-  if (!isAdmin(ctx.from.id)) return ctx.reply("❌ You are not authorized.");
-  const parts = (ctx.message.text || "").split(" ").filter(Boolean);
-  const id = parts[1];
-  if (!id) return ctx.reply("Usage: /approve_withdraw <withdrawal_id>");
-  try {
-    const r = await safeQuery("UPDATE withdrawals SET status='paid', processed_at=NOW() WHERE id=$1 AND status='pending' RETURNING *", [id]);
-    if (r.rowCount === 0) return ctx.reply("Withdrawal not found or already processed.");
-    const w = r.rows[0];
-    await safeQuery("INSERT INTO transactions (telegram_id, type, coins, amount, meta) VALUES ($1,'withdraw_paid',$2,$3,$4)", [w.telegram_id, w.coins, w.usd, JSON.stringify({ withdrawalId: id })]);
-    try { await bot.telegram.sendMessage(w.telegram_id, `✅ Your withdrawal #${id} of ${w.coins} coins (~$${w.usd}) has been approved and paid.`); } catch (e) {}
-    return ctx.reply(`✅ Withdrawal ${id} marked as paid.`);
-  } catch (e) {
-    console.error("approve withdraw err", e);
-    return ctx.reply("Error approving withdrawal.");
-  }
-});
-
-bot.command("decline_withdraw", async (ctx) => {
-  if (!isAdmin(ctx.from.id)) return ctx.reply("❌ You are not authorized.");
-  const parts = (ctx.message.text || "").split(" ").filter(Boolean);
-  const id = parts[1];
-  const reason = parts.slice(2).join(" ") || "No reason provided";
-  if (!id) return ctx.reply("Usage: /decline_withdraw <withdrawal_id> <reason>");
-  try {
-    const r = await safeQuery("UPDATE withdrawals SET status='declined', admin_note=$1, processed_at=NOW() WHERE id=$2 AND status='pending' RETURNING *", [reason, id]);
-    if (r.rowCount === 0) return ctx.reply("Withdrawal not found or already processed.");
-    const w = r.rows[0];
-    // refund coins to user
-    await safeQuery("UPDATE users SET coins = coins + $1 WHERE telegram_id=$2", [w.coins, w.telegram_id]);
-    await safeQuery("INSERT INTO transactions (telegram_id, type, coins, meta) VALUES ($1,'withdraw_declined',$2,$3)", [w.telegram_id, w.coins, JSON.stringify({ withdrawalId: id, reason })]);
-    try { await bot.telegram.sendMessage(w.telegram_id, `❌ Your withdrawal #${id} was declined. Reason: ${reason}`); } catch (e) {}
-    return ctx.reply(`✅ Withdrawal ${id} declined and coins refunded to user.`);
-  } catch (e) {
-    console.error("decline withdraw err", e);
-    return ctx.reply("Error declining withdrawal.");
-  }
-});
-
-// ---------- Admin: export withdrawals CSV ----------
-bot.command("export_withdrawals", async (ctx) => {
-  if (!isAdmin(ctx.from.id)) return ctx.reply("❌ You are not authorized.");
-  try {
-    const r = await safeQuery("SELECT * FROM withdrawals ORDER BY requested_at DESC");
-    // build CSV
-    const header = Object.keys(r.rows[0] || {}).join(",");
-    const lines = [header];
-    for (const row of r.rows) lines.push(Object.values(row).join(","));
-    const csv = lines.join("\n");
-    await ctx.replyWithDocument({ source: Buffer.from(csv, "utf8"), filename: "withdrawals.csv" });
-  } catch (e) {
-    console.error("export err", e);
-    await ctx.reply("Error exporting withdrawals.");
-  }
-});
-
-// ---------- Transactions last 7 days for a user ----------
-bot.command("transactions", async (ctx) => {
-  if (!isAdmin(ctx.from.id)) return ctx.reply("❌ You are not authorized.");
-  const parts = (ctx.message.text || "").split(" ").filter(Boolean);
-  const target = parts[1];
-  if (!target) return ctx.reply("Usage: /transactions <telegram_id>");
-  try {
-    const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-    const ads = await safeQuery("SELECT * FROM ad_views WHERE telegram_id=$1 AND created_at >= $2 ORDER BY created_at DESC LIMIT 200", [target, since]);
-    const w = await safeQuery("SELECT * FROM withdrawals WHERE telegram_id=$1 AND requested_at >= $2 ORDER BY requested_at DESC LIMIT 50", [target, since]);
-    let msg = `Transactions for ${target} (7 days)\n\nAds watched: ${ads.rowCount}\nWithdrawals: ${w.rowCount}\n\nRecent withdrawals:\n`;
-    for (const row of w.rows) msg += `${row.id} - ${row.status} - ${row.coins} coins - ${row.requested_at}\n`;
-    await ctx.reply(msg);
-  } catch (e) {
-    console.error("transactions err", e);
-    await ctx.reply("Error fetching transactions.");
-  }
-});
 
 // ---------- Invalid text handler: restrict to allowed texts or commands ----------
 bot.on("text", async (ctx) => {
