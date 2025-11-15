@@ -264,10 +264,12 @@ await initializeDatabase();
 
 
 // ---------- Utilities ----------
-// Convert coins → USD
+// Convert coins → USD (60,000 coins = $5)
 function coinsToUSD(coins) {
-  return (coins * 0.001).toFixed(2);  // 60000 coins = $4
+  const usd = (coins * (5 / 60000));
+  return usd.toFixed(2);
 }
+
 
 bot.hears("🔙 Back to Menu", async (ctx) => {
   const adminList = (process.env.ADMIN_TELEGRAM_ID || "")
