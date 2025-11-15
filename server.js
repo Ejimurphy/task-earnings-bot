@@ -368,8 +368,9 @@ function mainMenuKeyboard(ctx) {
 
 // ---------- /menu ----------
 bot.command("menu", async (ctx) => {
-  await ctx.reply("📍 Choose an option:", mainMenuKeyboard());
+  await ctx.reply("📍 Choose an option:", mainMenuKeyboard(ctx));
 });
+
 
 // ---------- Wallet balance (coins + USD + cash) ----------
 bot.hears("💼 Wallet Balance", async (ctx) => {
