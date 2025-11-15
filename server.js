@@ -19,108 +19,6 @@ let ADMINS = new Set([
   5725566044, // Secondary admin ID
 ]);
 
-// ✅ Command for adding a new admin (only by existing admins)
-bot.command("addadmin", async (ctx) => {
-  const senderId = ctx.from.id;
-  if (!ADMINS.has(senderId)) {
-    return ctx.reply("❌ You are not authorized to add admins.");
-  }
-
-  const input = ctx.message.text.split(" ");
-  if (input.length < 2) {
-    return ctx.reply("⚠️ Usage: /addadmin <user_id>");
-  }
-
-  const newAdminId = parseInt(input[1]);
-  if (isNaN(newAdminId)) {
-    return ctx.reply("⚠️ Invalid user ID.");
-  }
-
-  ADMINS.add(newAdminId);
-  await ctx.reply(`✅ Admin with ID ${newAdminId} added successfully.`);
-});
-
-// ---------- Admin Toggle Perform Task ----------
-bot.command("toggle_tasks", async (ctx) => {
-  const adminIds = (process.env.ADMIN_TELEGRAM_ID || "")
-    .split(",")
-    .map((x) => x.trim());
-
-  if (!adminIds.includes(String(ctx.from.id))) {
-    return ctx.reply("⚠️ You are not authorized to use this command.");
-  }
-
-  performTaskEnabled = !performTaskEnabled;
-  const status = performTaskEnabled ? "✅ ENABLED" : "⛔ DISABLED";
-
-  await ctx.reply(`🎥 Perform Task feature is now *${status}*`, { parse_mode: "Markdown" });
-});
-
-bot.command("toggle_tasks", async (ctx) => {
-  const adminIds = (process.env.ADMIN_TELEGRAM_ID || "")
-    .split(",")
-    .map((x) => x.trim());
-
-  if (!adminIds.includes(String(ctx.from.id))) {
-    return ctx.reply("⚠️ You are not authorized to use this command.");
-  }
-
-  performTaskEnabled = !performTaskEnabled;
-  const status = performTaskEnabled ? "enabled" : "disabled";
-
-  await setSetting("perform_task", status);
-
-  await ctx.reply(
-    `🎥 Perform Task feature is now *${status.toUpperCase()}*`,
-    { parse_mode: "Markdown" }
-  );
-});
-
-// ---------- Admin Check Task Status ----------
-bot.command("task_status", async (ctx) => {
-  const adminIds = (process.env.ADMIN_TELEGRAM_ID || "")
-    .split(",")
-    .map((x) => x.trim());
-
-  if (!adminIds.includes(String(ctx.from.id))) {
-    return ctx.reply("⚠️ You are not authorized to use this command.");
-  }
-
-  const status = performTaskEnabled ? "✅ Currently ENABLED" : "⛔ Currently DISABLED";
-  await ctx.reply(`🎥 Perform Task Status: *${status}*`, { parse_mode: "Markdown" });
-});
-
-// ✅ Command for removing an admin
-bot.command("removeadmin", async (ctx) => {
-  const senderId = ctx.from.id;
-  if (!ADMINS.has(senderId)) {
-    return ctx.reply("❌ You are not authorized to remove admins.");
-  }
-
-  const input = ctx.message.text.split(" ");
-  if (input.length < 2) {
-    return ctx.reply("⚠️ Usage: /removeadmin <user_id>");
-  }
-
-  const removeId = parseInt(input[1]);
-  if (ADMINS.has(removeId)) {
-    ADMINS.delete(removeId);
-    await ctx.reply(`✅ Admin with ID ${removeId} removed successfully.`);
-  } else {
-    await ctx.reply("⚠️ That user is not an admin.");
-  }
-});
-
-// ✅ Show current admins
-bot.command("admins", async (ctx) => {
-  if (!ADMINS.has(ctx.from.id)) {
-    return ctx.reply("❌ You are not authorized to view admins.");
-  }
-
-  const list = Array.from(ADMINS).join(", ");
-  await ctx.reply(`👑 *Current Admins:*\n${list}`, { parse_mode: "Markdown" });
-});
-
 // ✅ Apply session middleware after bot initialization
 bot.use(session());
 
@@ -333,6 +231,108 @@ Choose an option below:
       },
     }
   );
+});
+
+// ✅ Command for adding a new admin (only by existing admins)
+bot.command("addadmin", async (ctx) => {
+  const senderId = ctx.from.id;
+  if (!ADMINS.has(senderId)) {
+    return ctx.reply("❌ You are not authorized to add admins.");
+  }
+
+  const input = ctx.message.text.split(" ");
+  if (input.length < 2) {
+    return ctx.reply("⚠️ Usage: /addadmin <user_id>");
+  }
+
+  const newAdminId = parseInt(input[1]);
+  if (isNaN(newAdminId)) {
+    return ctx.reply("⚠️ Invalid user ID.");
+  }
+
+  ADMINS.add(newAdminId);
+  await ctx.reply(`✅ Admin with ID ${newAdminId} added successfully.`);
+});
+
+// ---------- Admin Toggle Perform Task ----------
+bot.command("toggle_tasks", async (ctx) => {
+  const adminIds = (process.env.ADMIN_TELEGRAM_ID || "")
+    .split(",")
+    .map((x) => x.trim());
+
+  if (!adminIds.includes(String(ctx.from.id))) {
+    return ctx.reply("⚠️ You are not authorized to use this command.");
+  }
+
+  performTaskEnabled = !performTaskEnabled;
+  const status = performTaskEnabled ? "✅ ENABLED" : "⛔ DISABLED";
+
+  await ctx.reply(`🎥 Perform Task feature is now *${status}*`, { parse_mode: "Markdown" });
+});
+
+bot.command("toggle_tasks", async (ctx) => {
+  const adminIds = (process.env.ADMIN_TELEGRAM_ID || "")
+    .split(",")
+    .map((x) => x.trim());
+
+  if (!adminIds.includes(String(ctx.from.id))) {
+    return ctx.reply("⚠️ You are not authorized to use this command.");
+  }
+
+  performTaskEnabled = !performTaskEnabled;
+  const status = performTaskEnabled ? "enabled" : "disabled";
+
+  await setSetting("perform_task", status);
+
+  await ctx.reply(
+    `🎥 Perform Task feature is now *${status.toUpperCase()}*`,
+    { parse_mode: "Markdown" }
+  );
+});
+
+// ---------- Admin Check Task Status ----------
+bot.command("task_status", async (ctx) => {
+  const adminIds = (process.env.ADMIN_TELEGRAM_ID || "")
+    .split(",")
+    .map((x) => x.trim());
+
+  if (!adminIds.includes(String(ctx.from.id))) {
+    return ctx.reply("⚠️ You are not authorized to use this command.");
+  }
+
+  const status = performTaskEnabled ? "✅ Currently ENABLED" : "⛔ Currently DISABLED";
+  await ctx.reply(`🎥 Perform Task Status: *${status}*`, { parse_mode: "Markdown" });
+});
+
+// ✅ Command for removing an admin
+bot.command("removeadmin", async (ctx) => {
+  const senderId = ctx.from.id;
+  if (!ADMINS.has(senderId)) {
+    return ctx.reply("❌ You are not authorized to remove admins.");
+  }
+
+  const input = ctx.message.text.split(" ");
+  if (input.length < 2) {
+    return ctx.reply("⚠️ Usage: /removeadmin <user_id>");
+  }
+
+  const removeId = parseInt(input[1]);
+  if (ADMINS.has(removeId)) {
+    ADMINS.delete(removeId);
+    await ctx.reply(`✅ Admin with ID ${removeId} removed successfully.`);
+  } else {
+    await ctx.reply("⚠️ That user is not an admin.");
+  }
+});
+
+// ✅ Show current admins
+bot.command("admins", async (ctx) => {
+  if (!ADMINS.has(ctx.from.id)) {
+    return ctx.reply("❌ You are not authorized to view admins.");
+  }
+
+  const list = Array.from(ADMINS).join(", ");
+  await ctx.reply(`👑 *Current Admins:*\n${list}`, { parse_mode: "Markdown" });
 });
 
 
