@@ -658,6 +658,25 @@ bot.hears("💸 Withdraw", async (ctx) => {
   }
 });
 
+// Accept multiple label variants for Refer
+bot.hears(["👥 Refer & Earn", "Refer & Earn", "Refer and Earn", "Refer"], async (ctx) => {
+  const telegramId = ctx.from.id;
+  const username = ctx.from.username || telegramId;
+  const link = `https://t.me/${ctx.botInfo.username}?start=${telegramId}`;
+  await ctx.reply(
+    `👥 *Refer & Earn*\nShare your link and earn ${REFERRAL_REWARD_COINS} coins when someone signs up using your link:\n\n${link}`,
+    { parse_mode: "Markdown", reply_markup: mainMenuKeyboard() }
+  );
+});
+
+
+bot.hears(["🏦 Change Bank", "Change Bank", "Change bank"], async (ctx) => {
+  await ctx.reply(
+    "To change bank account, send the details in this format:\n\noldBank,oldAccNumber,oldName|newBank,newAccNumber,newName\n\nOr send new details if you don't have a previous one: BankName,AccountNumber,AccountName",
+    { reply_markup: mainMenuKeyboard() }
+  );
+});
+
 // ---------- Save bank details when user sends BankName,AccountNumber,AccountName ----------
 bot.on("text", async (ctx, next) => {
   const text = (ctx.message.text || "").trim();
@@ -688,26 +707,6 @@ bot.on("text", async (ctx, next) => {
       return ctx.reply("⚠️ Error saving bank details.");
     }
   }
-
-  // Accept multiple label variants for Refer
-bot.hears(["👥 Refer & Earn", "Refer & Earn", "Refer and Earn", "Refer"], async (ctx) => {
-  const telegramId = ctx.from.id;
-  const username = ctx.from.username || telegramId;
-  const link = `https://t.me/${ctx.botInfo.username}?start=${telegramId}`;
-  await ctx.reply(
-    `👥 *Refer & Earn*\nShare your link and earn ${REFERRAL_REWARD_COINS} coins when someone signs up using your link:\n\n${link}`,
-    { parse_mode: "Markdown", reply_markup: mainMenuKeyboard() }
-  );
-});
-
-
-bot.hears(["🏦 Change Bank", "Change Bank", "Change bank"], async (ctx) => {
-  await ctx.reply(
-    "To change bank account, send the details in this format:\n\noldBank,oldAccNumber,oldName|newBank,newAccNumber,newName\n\nOr send new details if you don't have a previous one: BankName,AccountNumber,AccountName",
-    { reply_markup: mainMenuKeyboard() }
-  );
-});
-
 
   // ---------- Change bank flow: old|new format ----------
   if (text.includes("|") && text.split("|").length === 2 && text.split("|")[0].includes(",") && text.split("|")[1].includes(",")) {
