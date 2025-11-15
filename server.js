@@ -264,6 +264,11 @@ await initializeDatabase();
 
 
 // ---------- Utilities ----------
+// Convert coins → USD
+function coinsToUSD(coins) {
+  return (coins * 0.001).toFixed(2);  // 1000 coins = $1
+}
+
 bot.hears("🔙 Back to Menu", async (ctx) => {
   const adminList = (process.env.ADMIN_TELEGRAM_ID || "")
     .split(",")
