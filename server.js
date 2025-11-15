@@ -708,11 +708,6 @@ bot.on("text", async (ctx, next) => {
     }
   }
 
-   // ---------- Save or Change Bank Details ----------
-bot.on("text", async (ctx, next) => {
-  const text = (ctx.message.text || "").trim();
-  const telegramId = ctx.from.id;
-
   // ============ CHANGE BANK (strict old | new format) ============
   if (text.includes("|") && text.split("|").length === 2) {
     const [oldStr, newStr] = text.split("|").map(s => s.trim());
