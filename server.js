@@ -488,8 +488,8 @@ function mainMenuKeyboard() {
     ["🏦 Change Bank", "🆘 Get Help"],
   ]).resize();
 }
-
-
+// ---------- /menu ----------
+bot.command("menu", async (ctx) => { await ctx.reply("📍 Choose an option:", mainMenuKeyboard(ctx)); });
 
 // ---------- Wallet balance (coins + USD + cash) ----------
 bot.hears("💼 Wallet Balance", async (ctx) => {
