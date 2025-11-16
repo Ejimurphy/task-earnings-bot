@@ -480,14 +480,21 @@ bot.start(async (ctx) => {
   }
 });
 
-// ---------- Menu keyboard helper ----------
-function mainMenuKeyboard() {
-  return Markup.keyboard([
+// ---------- Menu keyboard helper (reply keyboard only) ----------
+function mainMenuKeyboard(isAdmin = false) {
+  const menu = [
     ["💼 Wallet Balance", "🎥 Perform Task"],
     ["💸 Withdraw", "👥 Refer & Earn"],
     ["🏦 Change Bank", "🆘 Get Help"],
-  ]).resize();
+  ];
+
+  if (isAdmin) {
+    menu.push(["🛠 Admin Panel"]);
+  }
+
+  return Markup.keyboard(menu).resize();
 }
+
 // ---------- /menu ----------
 bot.command("menu", async (ctx) => { await ctx.reply("📍 Choose an option:", mainMenuKeyboard(ctx)); });
 
