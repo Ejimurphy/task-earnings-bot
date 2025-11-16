@@ -15,18 +15,24 @@ export async function safeQuery(query, params = []) {
 }
 
 // ---------- Settings Helpers ----------
-async function setSetting(key, value) {
-  await safeQuery(
-    `INSERT INTO settings (key, value, updated_at) VALUES ($1,$2,NOW())
+export async function setSetting(key, value) {
+  await pool.query(
+    `INSERT INTO settings (key, value, updated_at)
+     VALUES ($1,$2,NOW())
      ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
     [key, value]
   );
 }
 
-async function getSetting(key) {
-  const r = await safeQuery(`SELECT value FROM settings WHERE key=$1`, [key]);
+export async function getSetting(key) {
+  const r = await pool.query(`SELECT value FROM settings WHERE key = $1`, [key]);
   return r.rows[0]?.value ?? null;
 }
+
+
+
+
+
 
 // ---------- Utility Functions ----------
 export function coinsToUSD(coins) {
