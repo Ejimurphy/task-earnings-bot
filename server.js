@@ -235,6 +235,32 @@ bot.hears("🛠 Admin Panel", async (ctx) => {
   );
 });
 
+// Enable Perform Task (admin keyboard button)
+bot.hears("🟢 Enable Perform Task", async (ctx) => {
+  if (!isAdmin(ctx.from.id)) return ctx.reply("❌ You are not authorized.");
+  try {
+    await setSetting("perform_task_enabled", "on");
+    performTaskEnabled = true;
+    await ctx.reply("✅ Perform Task feature has been ENABLED.");
+  } catch (e) {
+    console.error("enable task err", e);
+    await ctx.reply("⚠️ Failed to enable. Try again.");
+  }
+});
+
+// Disable Perform Task (admin keyboard button)
+bot.hears("🔴 Disable Perform Task", async (ctx) => {
+  if (!isAdmin(ctx.from.id)) return ctx.reply("❌ You are not authorized.");
+  try {
+    await setSetting("perform_task_enabled", "off");
+    performTaskEnabled = false;
+    await ctx.reply("🚫 Perform Task feature has been DISABLED.");
+  } catch (e) {
+    console.error("disable task err", e);
+    await ctx.reply("⚠️ Failed to disable. Try again.");
+  }
+});
+
 // ✅ Command for adding a new admin (only by existing admins)
 bot.command("addadmin", async (ctx) => {
   const senderId = ctx.from.id;
