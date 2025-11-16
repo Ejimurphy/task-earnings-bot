@@ -481,7 +481,6 @@ function mainMenuKeyboard(isAdmin = false) {
 }
 
 // ---------- /menu ----------
-const ADMIN_IDS = ["5236441213", "5725566044"];
 
 bot.command("menu", async (ctx) => {
   const isAdmin = ADMIN_IDS.includes(String(ctx.from.id));
