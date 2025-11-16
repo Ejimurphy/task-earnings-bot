@@ -301,18 +301,6 @@ bot.command("admins", async (ctx) => {
   await ctx.reply(`👑 *Current Admins:*\n${list}`, { parse_mode: "Markdown" });
 });
 
-// Enable Perform Task
-bot.hears("🟢 Enable Perform Task", async (ctx) => {
-  await setSetting("perform_task_enabled", "on");
-  await ctx.reply("✅ Perform Task feature has been ENABLED.");
-});
-
-// Disable Perform Task
-bot.hears("🔴 Disable Perform Task", async (ctx) => {
-  await setSetting("perform_task_enabled", "off");
-  await ctx.reply("🚫 Perform Task feature has been DISABLED.");
-});
-
 // Broadcast Message
 bot.hears("📢 Broadcast Message", async (ctx) => {
   ctx.session = ctx.session || {};
