@@ -481,26 +481,13 @@ bot.start(async (ctx) => {
 });
 
 // ---------- Menu keyboard helper ----------
-const adminIds = ["5236441213", "5725566044"];
-
-bot.command("menu", async (ctx) => {
-  const telegramId = String(ctx.from.id);
-
-  if (adminIds.includes(telegramId)) {
-    return ctx.reply(
-      "📍 Choose an option:",
-      Markup.keyboard([
-        ["💼 Wallet Balance", "🎥 Perform Task"],
-        ["💸 Withdraw", "👥 Refer & Earn"],
-        ["🏦 Change Bank", "🆘 Get Help"],
-        ["🛠 Admin Panel"],  // Only here for admins
-      ]).resize()
-    );
-  }
-
-  // Normal users
-  return ctx.reply("📍 Choose an option:", mainMenuKeyboard());
-});
+function mainMenuKeyboard() {
+  return Markup.keyboard([
+    ["💼 Wallet Balance", "🎥 Perform Task"],
+    ["💸 Withdraw", "👥 Refer & Earn"],
+    ["🏦 Change Bank", "🆘 Get Help"],
+  ]).resize();
+}
 
 
 
