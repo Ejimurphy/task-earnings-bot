@@ -162,6 +162,22 @@ async function initializeDatabase() {
 await initializeDatabase();
 
 
+// after initializeDatabase() and after imports
+let performTaskEnabled = true; // default
+
+async function loadSettingsOnStart() {
+  try {
+    const v = await getSetting("perform_task_enabled");
+    if (v === "off") performTaskEnabled = false;
+    else if (v === "on") performTaskEnabled = true;
+    // otherwise keep default true
+    console.log("Perform Task setting:", performTaskEnabled ? "on" : "off");
+  } catch (e) {
+    console.error("Failed to load settings on start:", e);
+  }
+}
+await loadSettingsOnStart();
+
 // ---------- Utilities ----------
 // Convert coins → USD (60,000 coins = $5)
 function coinsToUSD(coins) {
