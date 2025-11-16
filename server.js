@@ -197,28 +197,13 @@ bot.hears("🔙 Back to Menu", async (ctx) => {
 });
 
 // ---------- ADMIN PANEL (Using reply keyboard) ----------
-bot.hears("/admin", async (ctx) => {
-  const adminList = (process.env.ADMIN_TELEGRAM_ID || "")
-    .split(",")
-    .map((x) => x.trim());
+bot.hears("🛠 Admin Panel", async (ctx) => {
+  const isAdmin = ADMIN_IDS.includes(String(ctx.from.id));
+  if (!isAdmin) return ctx.reply("❌ You are not authorized.");
 
-  if (!adminList.includes(String(ctx.from.id))) {
-    return ctx.reply("❌ You are not authorized to access the admin panel.");
-  }
-
-  const text = `
-🛠️ *FonPay Task-Earnings Admin Panel*
-
-Welcome, *Admin* 👑  
-Manage system settings and monitor platform activities.
-
-Choose an option below:
-`;
-
-  await ctx.replyWithPhoto(
-    { url: "https://i.ibb.co/4d1w2kD/fonpay-logo.png" },
+  await ctx.reply(
+    "🛠️ *FonPay Task-Earnings Admin Panel*\n\nChoose an option:",
     {
-      caption: text,
       parse_mode: "Markdown",
       reply_markup: {
         keyboard: [
@@ -228,7 +213,7 @@ Choose an option below:
           ["🔙 Back to Menu"],
         ],
         resize_keyboard: true,
-      },
+      }
     }
   );
 });
