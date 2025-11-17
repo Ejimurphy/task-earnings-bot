@@ -227,7 +227,6 @@ bot.hears("🛠 Admin Panel", async (ctx) => {
       }
     }
   );
-});
 
 bot.hears(["🎥 Perform Task","Perform Task","Watch Ads","Start Task"], async (ctx) => {
 // ---------------- Global Switch ----------------
