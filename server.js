@@ -235,31 +235,29 @@ bot.hears("🛠 Admin Panel", async (ctx) => {
   );
 });
 
-// Enable Perform Task (admin keyboard button)
-bot.hears("🟢 Enable Perform Task", async (ctx) => {
-  if (!isAdmin(ctx.from.id)) return ctx.reply("❌ You are not authorized.");
+bot.hears(["🎥 Perform Task","Perform Task","Watch Ads","Start Task"], async (ctx) => {
+  const telegramId = ctx.from.id;
   try {
-    await setSetting("perform_task_enabled", "on");
-    performTaskEnabled = true;
-    await ctx.reply("✅ Perform Task feature has been ENABLED.");
-  } catch (e) {
-    console.error("enable task err", e);
-    await ctx.reply("⚠️ Failed to enable. Try again.");
+    // read DB (if DB temporarily unreachable, fallback to in-memory)
+    let dbVal = null;
+    try {
+      dbVal = await getSetting("perform_task_enabled");
+    } catch (e) {
+      console.warn("Could not read perform_task_enabled from DB, using in-memory flag");
+    }
+    const isEnabled = (dbVal === null) ? performTaskEnabled : (dbVal === "on");
+
+    if (!isEnabled) {
+      return ctx.reply("⚠️ The Perform Task feature is temporarily disabled. Please try again later.");
+    }
+
+    // ... rest of your handler (ban check, create session, etc.)
+  } catch (err) {
+    console.error("perform task error", err);
+    await ctx.reply("❌ error creating task session");
   }
 });
 
-// Disable Perform Task (admin keyboard button)
-bot.hears("🔴 Disable Perform Task", async (ctx) => {
-  if (!isAdmin(ctx.from.id)) return ctx.reply("❌ You are not authorized.");
-  try {
-    await setSetting("perform_task_enabled", "off");
-    performTaskEnabled = false;
-    await ctx.reply("🚫 Perform Task feature has been DISABLED.");
-  } catch (e) {
-    console.error("disable task err", e);
-    await ctx.reply("⚠️ Failed to disable. Try again.");
-  }
-});
 
 // ✅ Command for adding a new admin (only by existing admins)
 bot.command("addadmin", async (ctx) => {
