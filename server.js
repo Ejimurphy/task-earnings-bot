@@ -4,8 +4,6 @@ import dotenv from "dotenv";
 import { Telegraf, Markup, session } from "telegraf";
 import { safeQuery } from "./src/utils.js";
 
-let performTaskEnabled = true; // ✅ Default: ON
-
 // ✅ Load environment variables
 dotenv.config();
 
@@ -232,27 +230,36 @@ bot.hears("🛠 Admin Panel", async (ctx) => {
 });
 
 bot.hears(["🎥 Perform Task","Perform Task","Watch Ads","Start Task"], async (ctx) => {
-  const telegramId = ctx.from.id;
-  try {
-    // read DB (if DB temporarily unreachable, fallback to in-memory)
-    let dbVal = null;
-    try {
-      dbVal = await getSetting("perform_task_enabled");
-    } catch (e) {
-      console.warn("Could not read perform_task_enabled from DB, using in-memory flag");
-    }
-    const isEnabled = (dbVal === null) ? performTaskEnabled : (dbVal === "on");
+// ---------------- Global Switch ----------------
+let performTaskEnabled = true;
 
-    if (!isEnabled) {
-      return ctx.reply("⚠️ The Perform Task feature is temporarily disabled. Please try again later.");
-    }
+// ---------------- Admin IDs --------------------
+const adminIds = ["5236441213", "5725566044"];
 
-    // ... rest of your handler (ban check, create session, etc.)
-  } catch (err) {
-    console.error("perform task error", err);
-    await ctx.reply("❌ error creating task session");
-  }
+// ------------ Enable / Disable Handlers --------
+bot.hears("Enable Perform Task", (ctx) => {
+  if (!adminIds.includes(String(ctx.from.id))) return;
+  performTaskEnabled = true;
+  ctx.reply("✅ Perform Task ENABLED.");
 });
+
+bot.hears("Disable Perform Task", (ctx) => {
+  if (!adminIds.includes(String(ctx.from.id))) return;
+  performTaskEnabled = false;
+  ctx.reply("❌ Perform Task DISABLED.");
+});
+
+// ---------------- Perform Task -----------------
+bot.hears("🎥 Perform Task", async (ctx) => {
+
+  if (!performTaskEnabled) {
+    return ctx.reply("❌ Task service is currently disabled.");
+  }
+
+  // Your original task logic here
+  ctx.reply("Loading your task…");
+});
+
 
 
 // ✅ Command for adding a new admin (only by existing admins)
