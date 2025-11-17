@@ -161,10 +161,6 @@ async function initializeDatabase() {
 
 await initializeDatabase();
 
-
-// after initializeDatabase() and after imports
-let performTaskEnabled = true; // default
-
 async function loadSettingsOnStart() {
   try {
     const v = await getSetting("perform_task_enabled");
